@@ -1,0 +1,233 @@
+/* ============================================================
+   IO — CSV interchange with Jira RTM and Zephyr, JSON backup
+   ============================================================ */
+
+const IO = {
+  /* ---------- CSV primitives ---------- */
+  csvCell(v) {
+    v = String(v == null ? "" : v);
+    if (/[",\r\n]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
+    return v;
+  },
+
+  toCSV(rows) {
+    return rows.map(r => r.map(c => this.csvCell(c)).join(",")).join("\r\n");
+  },
+
+  /* Parse CSV (handles quoted cells, embedded commas/newlines, CRLF). */
+  parseCSV(text) {
+    const rows = [];
+    let row = [], cell = "", inQ = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (inQ) {
+        if (ch === '"') {
+          if (text[i + 1] === '"') { cell += '"'; i++; }
+          else inQ = false;
+        } else cell += ch;
+      } else if (ch === '"') {
+        inQ = true;
+      } else if (ch === ",") {
+        row.push(cell); cell = "";
+      } else if (ch === "\n" || ch === "\r") {
+        if (ch === "\r" && text[i + 1] === "\n") i++;
+        row.push(cell); cell = "";
+        if (row.length > 1 || row[0] !== "") rows.push(row);
+        row = [];
+      } else cell += ch;
+    }
+    row.push(cell);
+    if (row.length > 1 || row[0] !== "") rows.push(row);
+    return rows;
+  },
+
+  download(filename, text, mime) {
+    const blob = new Blob([text], { type: mime || "text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  },
+
+  stamp() { return new Date().toISOString().slice(0, 10); },
+
+  /* ============================================================
+     JIRA RTM — requirements
+     Export matches Jira's CSV importer (map Summary/Description/
+     Priority/Labels; Issue Type = Requirement for RTM projects).
+     ============================================================ */
+  exportJiraRequirements() {
+    const rows = [["Issue Type", "Issue key", "Summary", "Description", "Priority", "Labels"]];
+    for (const r of Store.all("requirements")) {
+      const labels = [r.code, r.type, r.measure && r.measure !== "None" ? r.measure : ""]
+        .filter(Boolean).map(l => l.replace(/\s+/g, "-")).join(" ");
+      const desc = r.text +
+        (r.threshold ? `\n\nThreshold: ${r.threshold}` : "") +
+        (r.objective ? `\nObjective: ${r.objective}` : "") +
+        `\nVerification method: ${r.method || ""}`;
+      rows.push(["Requirement", r.extKey || "", `${r.code}: ${r.title}`, desc, r.priority || "Medium", labels]);
+    }
+    this.download(`jira-rtm-requirements-${this.stamp()}.csv`, this.toCSV(rows));
+    return rows.length - 1;
+  },
+
+  /* RTM-style traceability: one row per requirement↔case link. */
+  exportTraceability() {
+    const rows = [["Requirement", "Requirement Summary", "Measure", "Test Case", "Test Case Summary", "Case Status", "Latest Result", "Latest Run Date", "Coverage Rollup"]];
+    for (const r of Store.all("requirements")) {
+      const cases = Store.casesOfRequirement(r.id);
+      const roll = Store.reqStatus(r.id);
+      if (!cases.length) {
+        rows.push([r.code, r.title, r.measure || "", "", "", "", "", "", "NO COVERAGE"]);
+        continue;
+      }
+      for (const tc of cases) {
+        const run = Store.latestRun(tc.id);
+        rows.push([r.code, r.title, r.measure || "", tc.code, tc.title, tc.status, run ? run.result : "Not Run", run ? run.date || "" : "", roll]);
+      }
+    }
+    this.download(`traceability-matrix-${this.stamp()}.csv`, this.toCSV(rows));
+    return rows.length - 1;
+  },
+
+  /* Import a Jira CSV export (or RTM export). Columns matched by
+     name, case-insensitive: Summary (required), Description,
+     Priority, Issue key. Existing rows matched by Issue key, then
+     by embedded "REQ-xxx:" prefix, then by exact title. */
+  importJiraRequirements(text) {
+    const rows = this.parseCSV(text);
+    if (!rows.length) throw new Error("Empty file");
+    const head = rows[0].map(h => h.trim().toLowerCase());
+    const col = name => head.indexOf(name);
+    const iSum = col("summary");
+    if (iSum < 0) throw new Error("No 'Summary' column found — expected a Jira CSV export");
+    const iDesc = col("description"), iPri = col("priority");
+    const iKey = head.findIndex(h => h === "issue key" || h === "key" || h === "issue id");
+    let added = 0, updated = 0;
+    for (const row of rows.slice(1)) {
+      const rawSum = (row[iSum] || "").trim();
+      if (!rawSum) continue;
+      const key = iKey >= 0 ? (row[iKey] || "").trim() : "";
+      // strip a leading "REQ-012:" style prefix back out of the summary
+      const m = rawSum.match(/^([A-Z]+-\d+)\s*[:—-]\s*(.+)$/);
+      const codeHint = m ? m[1] : null;
+      const title = m ? m[2].trim() : rawSum;
+      const patch = {
+        title,
+        text: iDesc >= 0 ? (row[iDesc] || "").split(/\r?\n+(?:Threshold:|Objective:|Verification method:)/)[0].trim() : "",
+        priority: iPri >= 0 && row[iPri] ? row[iPri].trim() : "Medium"
+      };
+      if (key) patch.extKey = key;
+      let existing =
+        (key && Store.all("requirements").find(r => r.extKey === key)) ||
+        (codeHint && Store.all("requirements").find(r => r.code === codeHint)) ||
+        Store.all("requirements").find(r => r.title === title);
+      if (existing) { Store.update("requirements", existing.id, patch); updated++; }
+      else {
+        Store.add("requirements", Object.assign({ type: "Functional", method: "Test", measure: "None", threshold: "", objective: "", componentIds: [] }, patch));
+        added++;
+      }
+    }
+    return { added, updated };
+  },
+
+  /* ============================================================
+     ZEPHYR — test cases
+     Export uses the Zephyr Squad importer layout: repeated step
+     rows under one case; case fields only on the first row.
+     ============================================================ */
+  exportZephyrCases() {
+    const rows = [["Name", "Objective", "Precondition", "Priority", "Labels", "Component", "Step", "Test Data", "Expected Result", "Issue Key"]];
+    for (const tc of Store.all("cases")) {
+      const comp = Store.get("components", tc.componentId);
+      const proc = tc.procedureId ? Store.get("procedures", tc.procedureId) : null;
+      const pre = proc ? Store.criteriaOf(proc.id, "entry").map(c => c.text).join("; ") : "";
+      const labels = [tc.code, tc.venue, tc.testType, ...(tc.requirementIds || []).map(rid => (Store.get("requirements", rid) || {}).code)]
+        .filter(Boolean).map(l => String(l).replace(/\s+/g, "-")).join(" ");
+      const steps = proc && proc.steps && proc.steps.length ? proc.steps : [""];
+      steps.forEach((s, i) => {
+        rows.push(i === 0
+          ? [tc.title, tc.objective || "", pre, tc.priority || "Medium", labels, comp ? comp.name : "", s, "", "", tc.extKey || ""]
+          : ["", "", "", "", "", "", s, "", "", ""]);
+      });
+    }
+    this.download(`zephyr-test-cases-${this.stamp()}.csv`, this.toCSV(rows));
+    return Store.all("cases").length;
+  },
+
+  /* Import a Zephyr-style CSV. A non-empty Name starts a new case;
+     following rows contribute steps. Components matched by name
+     (created under an "Imported" system when unknown). A label
+     matching an existing TC-xxx code updates that case instead. */
+  importZephyrCases(text) {
+    const rows = this.parseCSV(text);
+    if (!rows.length) throw new Error("Empty file");
+    const head = rows[0].map(h => h.trim().toLowerCase());
+    const col = name => head.indexOf(name);
+    const iName = col("name"), iObj = col("objective"), iPre = col("precondition"),
+          iPri = col("priority"), iLab = col("labels"), iComp = col("component"),
+          iStep = head.findIndex(h => h === "step" || h.startsWith("test script")),
+          iKey = head.findIndex(h => h === "issue key" || h === "key" || h === "issue id");
+    if (iName < 0) throw new Error("No 'Name' column found — expected a Zephyr CSV");
+
+    const groups = [];
+    let cur = null;
+    for (const row of rows.slice(1)) {
+      const name = (row[iName] || "").trim();
+      if (name) {
+        cur = { name, objective: iObj >= 0 ? row[iObj] || "" : "", pre: iPre >= 0 ? row[iPre] || "" : "",
+                priority: iPri >= 0 ? row[iPri] || "" : "", labels: iLab >= 0 ? row[iLab] || "" : "",
+                component: iComp >= 0 ? row[iComp] || "" : "", key: iKey >= 0 ? (row[iKey] || "").trim() : "", steps: [] };
+        groups.push(cur);
+      }
+      if (cur && iStep >= 0 && (row[iStep] || "").trim()) cur.steps.push(row[iStep].trim());
+    }
+
+    const findOrCreateComponent = name => {
+      name = (name || "").trim();
+      if (name) {
+        const hit = Store.all("components").find(c => c.name.toLowerCase() === name.toLowerCase());
+        if (hit) return hit.id;
+      }
+      let sys = Store.all("systems").find(s => s.name === "Imported");
+      if (!sys) sys = Store.add("systems", { name: "Imported", description: "Container for entities brought in via CSV import — reassign as needed." });
+      const comp = Store.add("components", { systemId: sys.id, name: name || "Imported Cases", description: "Created during CSV import." });
+      return comp.id;
+    };
+
+    let added = 0, updated = 0;
+    const validPri = ["Critical", "High", "Medium", "Low"];
+    for (const g of groups) {
+      const codeHit = (g.labels.match(/TC-\d+/) || [])[0];
+      const existing =
+        (g.key && Store.all("cases").find(tc => tc.extKey === g.key)) ||
+        (codeHit ? Store.all("cases").find(tc => tc.code === codeHit) : null);
+      const patch = {
+        title: g.name,
+        objective: g.objective,
+        priority: validPri.includes(g.priority) ? g.priority : "Medium"
+      };
+      if (g.key) patch.extKey = g.key;
+      let target;
+      if (existing) { target = Store.update("cases", existing.id, patch); updated++; }
+      else {
+        target = Store.add("cases", Object.assign(patch, {
+          componentId: findOrCreateComponent(g.component),
+          status: "Draft", requirementIds: [], resourceIds: [], venue: "", testType: "", procedureId: null
+        }));
+        added++;
+      }
+      if (g.steps.length && !target.procedureId) {
+        const proc = Store.add("procedures", {
+          title: `${g.name} — imported steps`,
+          description: "Steps imported from Zephyr CSV.",
+          steps: g.steps
+        });
+        if (g.pre) Store.add("criteria", { parentType: "procedure", parentId: proc.id, kind: "entry", text: g.pre, status: "open" });
+        Store.update("cases", target.id, { procedureId: proc.id });
+      }
+    }
+    return { added, updated };
+  }
+};

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MSM-1 · T&amp;E Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app-shell">
+  <aside id="sidebar">
+    <div class="brand">
+      <div class="brand-mark">T&amp;E</div>
+      <div class="brand-text">
+        <span class="brand-title">MSM-1 CONSOLE</span>
+        <span class="brand-sub">Test &amp; Evaluation</span>
+      </div>
+    </div>
+    <input id="global-search" type="search" placeholder="Search everything…  /" autocomplete="off">
+    <nav id="main-nav">
+      <a href="#/dashboard" data-nav="dashboard"><span class="nav-ico">◈</span>Dashboard</a>
+      <a href="#/schedule" data-nav="schedule"><span class="nav-ico">▦</span>Schedule <em class="nav-count" data-count="events"></em></a>
+      <a href="#/systems" data-nav="systems"><span class="nav-ico">⬒</span>Systems <em class="nav-count" data-count="systems"></em></a>
+      <a href="#/requirements" data-nav="requirements"><span class="nav-ico">§</span>Requirements <em class="nav-count" data-count="requirements"></em></a>
+      <a href="#/cases" data-nav="cases"><span class="nav-ico">☰</span>Test Cases <em class="nav-count" data-count="cases"></em></a>
+      <a href="#/trace" data-nav="trace"><span class="nav-ico">⊞</span>Trace Matrix</a>
+      <a href="#/idsk" data-nav="idsk"><span class="nav-ico">◍</span>IDSK <em class="nav-count" data-count="decisions"></em></a>
+      <a href="#/procedures" data-nav="procedures"><span class="nav-ico">≡</span>Procedures <em class="nav-count" data-count="procedures"></em></a>
+      <a href="#/plans" data-nav="plans"><span class="nav-ico">▤</span>Test Plans <em class="nav-count" data-count="plans"></em></a>
+      <a href="#/runs" data-nav="runs"><span class="nav-ico">▶</span>Test Runs <em class="nav-count" data-count="runs"></em></a>
+      <a href="#/defects" data-nav="defects"><span class="nav-ico">⚑</span>Defects <em class="nav-count" data-count="defects"></em></a>
+      <a href="#/risks" data-nav="risks"><span class="nav-ico">⚠</span>Risks <em class="nav-count" data-count="risks"></em></a>
+      <a href="#/resources" data-nav="resources"><span class="nav-ico">◎</span>M&amp;S / VV&amp;A <em class="nav-count" data-count="resources"></em></a>
+      <a href="#/documents" data-nav="documents"><span class="nav-ico">🗎</span>Documents <em class="nav-count" data-count="documents"></em></a>
+      <a href="#/interchange" data-nav="interchange"><span class="nav-ico">⇅</span>Interchange</a>
+    </nav>
+    <div class="sidebar-foot">
+      <button class="btn btn-ghost btn-sm" data-act="export-data" title="Download database as JSON">Export</button>
+      <button class="btn btn-ghost btn-sm" data-act="import-data" title="Load database from JSON">Import</button>
+      <button class="btn btn-ghost btn-sm danger" data-act="reset-data" title="Reset to demo data">Reset</button>
+      <input type="file" id="import-file" accept="application/json" hidden>
+    </div>
+  </aside>
+  <main id="main">
+    <div id="view"></div>
+  </main>
+</div>
+<div id="modal-root"></div>
+<div id="palette-root"></div>
+<div id="toast-root"></div>
+<script src="js/seed.js"></script>
+<script src="js/store.js"></script>
+<script src="js/io.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/views.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
