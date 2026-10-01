@@ -501,7 +501,11 @@ test('schedule lists upcoming events first and past events in their own section,
   assert.ok(at('Synthetic running now')<at('Synthetic tomorrow')&&at('Synthetic tomorrow')<at('Synthetic next month'),'upcoming: soonest first, events still running included');
   assert.ok(at('>Past')<at('Synthetic recent past')&&at('Synthetic recent past')<at('Synthetic far past'),'past: below upcoming, most recent first');
   assert.match(html,/Synthetic recent past[^]*?past due — update status/,'a past event still Planned is flagged');
-  assert.match(full,/class="sched-pin"/,'campaign overview is wrapped to stay pinned');
+  assert.doesNotMatch(full,/sched-pin/,'the campaign overview scrolls with the page');
+  await S.command('plan event',()=>{const p=S.all('plans')[0];ev('Synthetic plan event',day(2),'','Planned').planId=p.id;});
+  const chart=h.Views.schedule(new URLSearchParams());
+  const rowsAt=[...chart.matchAll(/class="gantt-label">([^]*?)<\/div>/g)].map(m=>m[1]);
+  assert.match(rowsAt[0],/Program/,'the Program (no plan) row sits above every test plan row');
 });
 test('runtime shell has no remote assets and disallows background connections',()=>{
   const html=fs.readFileSync(path.join(root,'index.html'),'utf8');assert.doesNotMatch(html,/(?:src|href)="https?:/);assert.match(html,/connect-src 'none'/);

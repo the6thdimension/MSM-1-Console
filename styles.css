@@ -918,12 +918,6 @@ td.bulk-cell, th.bulk-cell { width: 26px; text-align: center; }
 .tl-flag.now { color: var(--green); }
 .tl-section { font-family: var(--disp); font-weight: 600; font-size: 20px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--amber); margin: 22px 0 4px; display: flex; align-items: baseline; gap: 12px; }
 .tl-section.past { color: var(--ink-dim); margin-top: 34px; padding-top: 18px; border-top: 1px solid var(--line); }
-/* The Campaign Overview stays pinned while the dated list scrolls beneath it — only on
-   screens tall enough that it cannot crowd out the list. */
-@media (min-height: 820px) and (min-width: 900px) {
-  .sched-pin { position: sticky; top: 0; z-index: 6; background: var(--bg-0); padding-top: 8px; box-shadow: 0 10px 14px -12px rgba(0,0,0,.8); }
-  .sched-pin .panel { margin-bottom: 8px; }
-}
 .tl-date {
   min-width: 74px;
   text-align: center;

@@ -22,7 +22,7 @@ Views.schedule = function (params) {
     ${pageHead([{ label: "Schedule" }], "Program Schedule",
       actBtn("+ New Event", "add-event", null, "", false),
       "Test events, reviews, range windows, and decision points on one timeline. Open an event to track it and add dated notes.")}
-    ${gantt ? `<div class="sched-pin">${gantt}</div>` : ""}
+    ${gantt}
     <div class="filter-bar">
       <select data-filter="type"><option value="">All types</option>${EVENT_TYPES.map(t => `<option ${typeF === t ? "selected" : ""}>${t}</option>`).join("")}</select>
       <select data-filter="status"><option value="">All statuses</option>${EVENT_STATUSES.map(s => `<option ${statF === s ? "selected" : ""}>${s}</option>`).join("")}</select>
@@ -210,7 +210,7 @@ function campaignGantt(params) {
 
   return panel("Campaign Overview", `<div class="gantt">
       <div class="gantt-rows">
-        ${rows}${programRow}
+        ${programRow}${rows}
         <div class="gantt-overlay" aria-hidden="true">${overlay}</div>
       </div>
       <div class="gantt-axis">${axis}</div>
