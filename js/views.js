@@ -39,7 +39,7 @@ function evidenceRefs(text) {
   const refs = String(text || "").split(/\n+/).map(s => s.trim()).filter(Boolean);
   if (!refs.length) return "";
   return refs.map(r => /^https?:\/\//i.test(r)
-    ? `<a class="ev-ref" href="${esc(r)}" target="_blank" rel="noopener">${esc(r.replace(/^https?:\/\//i, "").slice(0, 40))}</a>`
+    ? `<a class="ev-ref" href="${esc(r)}" target="_blank" rel="noopener noreferrer">${esc(r.replace(/^https?:\/\//i, "").slice(0, 40))}</a>`
     : `<span class="ev-ref">${esc(r)}</span>`).join("");
 }
 
@@ -77,10 +77,8 @@ function riskTrend(r) {
 /* External (Jira/Zephyr) issue-key tag; links out when a Jira base URL is set. */
 function extKeyTag(key) {
   if (!key) return `<span class="faint">—</span>`;
-  const base = (Store.db.meta.jiraBaseUrl || "").trim().replace(/\/+$/, "");
-  return base
-    ? `<a class="ev-ref" target="_blank" rel="noopener" href="${esc(base)}/browse/${esc(key)}" title="Open in Jira">↗ ${esc(key)}</a>`
-    : `<span class="ev-ref" title="Set a Jira base URL under Interchange to make this a link">${esc(key)}</span>`;
+  const base = safeHttp((Store.db.meta.jiraBaseUrl || '').trim());
+  return externalLink(base ? base.replace(/\/+$/, '') + '/browse/' + encodeURIComponent(key) : '', key);
 }
 
 /* Bottom-of-page external links: paste a full Jira/Zephyr/share URL to jump out. */
@@ -96,7 +94,7 @@ function extLinksPanel(coll, entity) {
   };
   const chipsHtml = links.map((l, i) => `
     <span style="display:inline-flex;align-items:center;gap:4px;margin:2px 6px 2px 0">
-      <a class="ev-ref" href="${esc(l.url)}" target="_blank" rel="noopener" title="${esc(l.url)}">↗ ${esc(shortLabel(l))}</a>
+      ${externalLink(l.url, "↗ " + shortLabel(l))}
       ${actBtn("✕", "del-extlink", String(i), `data-coll="${coll}" data-entity="${entity.id}"`, true, "btn-xs")}
     </span>`).join("");
   return `
@@ -211,7 +209,7 @@ Views.dashboard = function () {
   const coveragePct = reqs.length ? Math.round(((reqRoll.verified + reqRoll.covered + reqRoll.failing) / reqs.length) * 100) : 0;
   const verifiedPct = reqs.length ? Math.round((reqRoll.verified / reqs.length) * 100) : 0;
 
-  const recentRuns = runs.slice().sort((a, b) => (b.date || "").localeCompare(a.date || "")).slice(0, 6);
+  const recentRuns = runs.slice().sort((a, b) => Store.compareRuns(a, b)).slice(0, 6);
 
   const planRows = Store.all("plans").map(p => {
     const c = planCounts(p);
@@ -942,7 +940,7 @@ Views.planDetail = function (id) {
 /* ================= TEST RUNS ================= */
 Views.runs = function (params) {
   const resF = params.get("result") || "";
-  let runs = Store.all("runs").slice().sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  let runs = Store.all("runs").slice().sort((a, b) => Store.compareRuns(a, b));
   if (resF) runs = runs.filter(r => r.result === resF);
 
   const rows = runs.map(r => {
@@ -1178,7 +1176,7 @@ Views.documents = function (params) {
       "Program documentation: link out to files on your share/wiki, or embed small files directly (stored in this browser's local database). Related codes auto-link to any entity in the console.")}
     <div class="filter-bar">
       <select data-filter="type"><option value="">All types</option>${DOC_TYPES.map(t => `<option ${typeF === t ? "selected" : ""}>${t}</option>`).join("")}</select>
-      <span class="faint mono small">${docs.length} shown · database ≈ ${fmtBytes(bytes)} of ~5 MB browser budget</span>
+      <span class="faint mono small">${docs.length} shown · active database ≈ ${fmtBytes(bytes)} characters; recovery copy also uses browser storage</span>
     </div>
     ${panel("Library", rows
       ? `<div class="table-scroll"><table class="data"><thead><tr><th>Code</th><th>Document</th><th>Type</th><th>Attachment</th><th>Related</th><th>Added</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
@@ -1213,7 +1211,7 @@ function openDocModal(existing, fileData) {
         v.fileSize = pendingDocFile.size;
         v.fileType = pendingDocFile.type;
         v.dataUrl = pendingDocFile.dataUrl;
-        pendingDocFile = null;
+        Store.effect(() => { pendingDocFile = null; });
       }
       if (isEdit) { Store.update("documents", existing.id, v); Toast.show("Saved"); }
       else {
@@ -1243,7 +1241,7 @@ Views.sitrep = function () {
     </dl>` : `<span class="faint small">Deltas appear once snapshots span more than one day.</span>`;
 
   const weekRuns = Store.all("runs").filter(r => (r.date || "") >= weekAgo)
-    .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+    .sort((a, b) => Store.compareRuns(a, b));
   const runRows = weekRuns.map(r => {
     const tc = Store.get("cases", r.caseId);
     return `<tr><td class="num">${esc(r.code)}</td><td class="num">${esc(r.date || "")}</td>
@@ -1590,7 +1588,7 @@ Views.decisionReport = function (id) {
   const measureRows = reqs.map(r => {
     const cases = Store.casesOfRequirement(r.id);
     const best = cases.map(tc => Store.latestRun(tc.id)).filter(Boolean)
-      .sort((a, b) => (b.date || "").localeCompare(a.date || ""))[0];
+      .sort((a, b) => Store.compareRuns(a, b))[0];
     return `<tr>
       <td class="num">${esc(r.code)}</td>
       <td>${esc(r.title)}<div class="faint small">${esc(r.text)}</div></td>
@@ -1771,7 +1769,7 @@ Views.eventDetail = function (id) {
   if (!ev) return notFound("Event");
   const plan = ev.planId ? Store.get("plans", ev.planId) : null;
   const dec = ev.decisionId ? Store.get("decisions", ev.decisionId) : null;
-  const notes = (ev.notes || []).slice().sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  const notes = (ev.notes || []).slice().sort((a, b) => Store.compareRuns(a, b));
 
   const notesHtml = notes.length ? notes.map(n => `
     <div class="note-item">
@@ -1936,6 +1934,8 @@ Views.interchange = function () {
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             ${actBtn("Export JSON", "export-data", null, "", false)}
             ${actBtn("Import JSON…", "import-data", null)}
+            ${actBtn("Export recovery copy", "export-recovery", null)}
+            ${actBtn("Export unsaved draft", "export-draft", null)}
             ${actBtn("Reset to Demo Data", "reset-data", null)}
             ${actBtn("Start Blank Program…", "start-blank", null)}
           </div>
@@ -2151,6 +2151,7 @@ const Actions = {
     const url = urlEl ? urlEl.value.trim() : "";
     if (!url) { Toast.show("Paste a link address first", true); if (urlEl) urlEl.focus(); return; }
     const entity = Store.get(coll, id);
+    if (!safeHttp(url)) throw new Error('Enter a full HTTP(S) URL. File paths belong in Documents and remain text references.');
     const links = (entity.extLinks || []).concat([{ url, label: labelEl ? labelEl.value.trim() : "" }]);
     Store.update(coll, id, { extLinks: links });
     Toast.show("Link added");
@@ -2182,13 +2183,12 @@ const Actions = {
   "doc-download": id => {
     const d = Store.get("documents", id);
     if (!d || !d.dataUrl) return;
-    fetch(d.dataUrl).then(r => r.blob()).then(blob => {
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = d.fileName || "document";
-      a.click();
-      URL.revokeObjectURL(a.href);
-    }).catch(() => Toast.show("Could not decode the embedded file", true));
+    try {
+      const match=d.dataUrl.match(/^data:[^,]*;base64,([A-Za-z0-9+/]*={0,2})$/);
+      if(!match)throw new Error('Invalid attachment');
+      const bytes=Uint8Array.from(atob(match[1]),c=>c.charCodeAt(0));
+      IO.download(d.fileName || 'document',bytes,'application/octet-stream');
+    } catch (_) { Toast.show('Could not decode the embedded file',true); }
   },
 
   /* ---- start blank program ---- */
@@ -2205,6 +2205,7 @@ const Actions = {
   "save-jira-url": () => {
     const el = document.getElementById("jira-base");
     if (!el) return;
+    if (el.value.trim() && !safeHttp(el.value.trim())) throw new Error('Jira base URL must be a full HTTP(S) URL.');
     Store.db.meta.jiraBaseUrl = el.value.trim();
     Store.save();
     Toast.show(Store.db.meta.jiraBaseUrl ? "Jira base URL saved — issue keys are now links" : "Jira base URL cleared");
@@ -2367,7 +2368,7 @@ const Actions = {
       caseId: id, date, operator: val("exec-operator"), planId: val("exec-plan") || null,
       result, measured: val("exec-measured"), evidence: val("exec-evidence"), notes
     });
-    applyRunStatus(id, result);
+
     Toast.show(`${run.code} recorded — ${result}`);
     App.go(`#/cases/${id}`);
     if (result === "Fail") {
@@ -2534,15 +2535,24 @@ const Actions = {
     const blob = new Blob([Store.exportJSON()], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `msm4-te-export-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `msm1-te-export-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
-    URL.revokeObjectURL(a.href);
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     Toast.show("Database exported");
   },
   "import-data": () => document.getElementById("import-file").click(),
-  "reset-data": () => Modal.confirm("Reset the database to the demo dataset? All your changes will be lost.", () => {
-    Store.reset(); Toast.show("Reset to demo data"); App.render(); App.refreshNavCounts();
-  })
+  "export-recovery": () => {
+    const raw=localStorage.getItem(DB_KEY+'-recovery');
+    if(raw===null){Toast.show('No recovery copy exists yet',true);return;}
+    IO.download('previous-database.json',raw,'application/json');
+  },
+  "export-draft": () => {
+    if(!Store.failedDraft){Toast.show('No unsaved draft exists',true);return;}
+    IO.download('unsaved-draft.json',Store.failedDraft,'application/json');
+  },
+  "reset-data": () => Modal.confirm("Reset the database to the demo dataset? Export your program first. A recovery copy will be saved before replacement.", () => {
+    Store.reset(); toastUndo("Reset to demo data"); App.render(); App.refreshNavCounts();
+  },'Reset')
 };
 
 /* ---------- form field definitions ---------- */
@@ -2695,18 +2705,10 @@ function openRunForm(preset) {
     if (fixed) v.caseId = preset.caseId;
     if (preset.planId && !v.planId) v.planId = preset.planId;
     const run = Store.add("runs", v);
-    applyRunStatus(v.caseId, v.result);
+
     Toast.show(`${run.code} recorded — ${v.result}`);
     App.render();
   }, "Record");
-}
-
-/* Executing a case bumps its lifecycle status sensibly. */
-function applyRunStatus(caseId, result) {
-  if (!Store.get("cases", caseId)) return;
-  if (result === "Pass") Store.update("cases", caseId, { status: "Complete" });
-  else if (result === "In Progress" || result === "Fail") Store.update("cases", caseId, { status: "In Progress" });
-  else if (result === "Blocked") Store.update("cases", caseId, { status: "Blocked" });
 }
 
 function openDefectForm(preset) {

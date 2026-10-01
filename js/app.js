@@ -175,15 +175,11 @@ const App = {
       const li = e.target.closest("[data-step-idx]");
       if (!dragStep || !li || li.dataset.proc !== dragStep.proc) { dragStep = null; return; }
       e.preventDefault();
-      const p = Store.get("procedures", li.dataset.proc);
-      const to = Number(li.dataset.stepIdx);
-      if (p && to !== dragStep.idx) {
-        const [moved] = p.steps.splice(dragStep.idx, 1);
-        p.steps.splice(to, 0, moved);
-        Store.logAudit("procedures", p, "updated", `step reordered ${dragStep.idx + 1} → ${to + 1}`);
-        Store.save();
-        this.render();
-      }
+      const from = dragStep.idx, procId = li.dataset.proc, to = Number(li.dataset.stepIdx);
+      Commands.run('Reorder procedure steps', () => {
+        const p=Store.get('procedures',procId);
+        if(p && to!==from) { const [moved]=p.steps.splice(from,1); p.steps.splice(to,0,moved); Store.save(); this.render(); }
+      });
       dragStep = null;
     });
     document.body.addEventListener("dragend", () => {
@@ -214,6 +210,7 @@ const App = {
       }
       const reader = new FileReader();
       reader.onload = () => openDocModal(null, { name: file.name, size: file.size, type: file.type, dataUrl: reader.result });
+      reader.onerror = () => Toast.show('Could not read the selected attachment',true);
       reader.readAsDataURL(file);
     });
 
@@ -225,15 +222,8 @@ const App = {
       if (!file) return;
       const isJira = t.id === "import-jira-file";
       const reader = new FileReader();
-      reader.onload = () => {
-        try {
-          const res = isJira ? IO.importJiraRequirements(reader.result) : IO.importZephyrCases(reader.result);
-          Toast.show(`${isJira ? "Jira" : "Zephyr"} import: ${res.added} added, ${res.updated} updated`);
-          this.render();
-        } catch (err) {
-          Toast.show(`Import failed: ${err.message}`, true);
-        }
-      };
+      reader.onload = () => Commands.previewCSV(reader.result,isJira);
+      reader.onerror = () => Toast.show('Could not read the selected CSV file',true);
       reader.readAsText(file);
       t.value = "";
     });
@@ -243,26 +233,37 @@ const App = {
       const file = e.target.files[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = () => {
-        try {
-          Store.importJSON(reader.result);
-          Toast.show("Database imported");
-          this.render();
-        } catch (err) {
-          Toast.show(`Import failed: ${err.message}`, true);
-        }
-      };
+      reader.onload = () => Commands.previewJSON(reader.result);
+      reader.onerror = () => Toast.show('Could not read the selected JSON file',true);
       reader.readAsText(file);
       e.target.value = "";
     });
   },
 
   boot() {
-    Store.load();
-    try { Store.snapshotToday(); } catch (e) { /* non-fatal */ }
+    Commands.install();
+    try { Store.load(); } catch (err) { this.recovery(err); return; }
     this.bind();
     if (!location.hash) location.hash = "#/dashboard";
     this.render();
+    window.addEventListener('storage', e => {
+      if(e.key===DB_KEY || e.key===null) Toast.show('Database changed in another tab. Export any unsaved draft and reload before saving.',true);
+    });
+    Commands.run('Daily snapshot',()=>Store.snapshotToday());
+  },
+  recovery(err) {
+    document.getElementById('sidebar').style.display='none';
+    const view=document.getElementById('view');
+    view.innerHTML='<div class="panel" style="margin:40px;padding:24px"><h1>Database recovery required</h1><p id="recovery-error"></p><p>No demo data was loaded. Existing storage has not been replaced. Download the original data and recovery copy below. Restore a valid export in an isolated browser profile, keeping these files for recovery.</p><div id="recovery-files"></div><button class="btn" id="recovery-reload">Retry loading</button></div>';
+    document.getElementById('recovery-error').textContent=err.message;
+    for(const key of [DB_KEY,DB_KEY+'-recovery',...OLD_DB_KEYS]) {
+      try {
+        const raw=localStorage.getItem(key); if(raw===null)continue;
+        const button=document.createElement('button');button.className='btn btn-ghost';button.textContent='Download '+key;
+        button.onclick=()=>IO.download(key+'.json',raw,'application/json');document.getElementById('recovery-files').appendChild(button);
+      } catch (_) { /* Storage may be disabled by the browser. */ }
+    }
+    document.getElementById('recovery-reload').onclick=()=>location.reload();
   }
 };
 

@@ -1,0 +1,9 @@
+{
+  "name": "msm-te-console",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/hardening.test.cjs",
+    "test:browser": "node tests/browser.cjs",
+    "test:release": "npm test && npm run test:browser"
+  }
+}

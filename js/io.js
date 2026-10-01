@@ -3,9 +3,16 @@
    ============================================================ */
 
 const IO = {
+  unique(coll, predicate, label) {
+    const matches=Store.all(coll).filter(predicate);
+    if(matches.length>1)throw new Error(`Ambiguous ${label}; resolve duplicate matches before importing`);
+    return matches[0] || null;
+  },
   /* ---------- CSV primitives ---------- */
   csvCell(v) {
     v = String(v == null ? "" : v);
+    // Prevent spreadsheet formula execution. CSV is partial interchange; preserve this prefix on import.
+    if (/^(?:\s*[=+\-@]|[\t\r])/.test(v)) v = "'" + v;
     if (/[",\r\n]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
     return v;
   },
@@ -16,28 +23,27 @@ const IO = {
 
   /* Parse CSV (handles quoted cells, embedded commas/newlines, CRLF). */
   parseCSV(text) {
-    const rows = [];
-    let row = [], cell = "", inQ = false;
-    for (let i = 0; i < text.length; i++) {
-      const ch = text[i];
-      if (inQ) {
-        if (ch === '"') {
-          if (text[i + 1] === '"') { cell += '"'; i++; }
-          else inQ = false;
-        } else cell += ch;
-      } else if (ch === '"') {
-        inQ = true;
-      } else if (ch === ",") {
-        row.push(cell); cell = "";
-      } else if (ch === "\n" || ch === "\r") {
-        if (ch === "\r" && text[i + 1] === "\n") i++;
-        row.push(cell); cell = "";
-        if (row.length > 1 || row[0] !== "") rows.push(row);
-        row = [];
-      } else cell += ch;
+    text=String(text).replace(/^\uFEFF/,'');
+    const rows=[]; let row=[],cell='',quoted=false,closed=false;
+    const endCell=()=>{row.push(cell);cell='';closed=false;};
+    const endRow=()=>{endCell();if(row.some(c=>c!==''))rows.push(row);row=[];};
+    for(let i=0;i<text.length;i++) {
+      const ch=text[i];
+      if(quoted) {
+        if(ch==='"') { if(text[i+1]==='"'){cell+='"';i++;} else {quoted=false;closed=true;} }
+        else cell+=ch;
+      } else if(ch===',')endCell();
+      else if(ch==='\r'||ch==='\n') {if(ch==='\r'&&text[i+1]==='\n')i++;endRow();}
+      else if(ch==='"') {if(cell||closed)throw new Error('Unexpected quote in CSV');quoted=true;}
+      else {if(closed)throw new Error('Unexpected characters after a quoted CSV cell');cell+=ch;}
     }
-    row.push(cell);
-    if (row.length > 1 || row[0] !== "") rows.push(row);
+    if(quoted)throw new Error('Unclosed quoted CSV cell');
+    if(cell||row.length||closed)endRow();
+    if(rows.length) {
+      const header=rows[0].map(h=>h.trim().toLowerCase());
+      if(new Set(header).size!==header.length)throw new Error('Duplicate CSV column names');
+      rows.forEach((r,i)=>{if(r.length!==header.length)throw new Error('CSV row '+(i+1)+' has the wrong number of columns');});
+    }
     return rows;
   },
 
@@ -47,7 +53,7 @@ const IO = {
     a.href = URL.createObjectURL(blob);
     a.download = filename;
     a.click();
-    URL.revokeObjectURL(a.href);
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   },
 
   stamp() { return new Date().toISOString().slice(0, 10); },
@@ -96,6 +102,7 @@ const IO = {
      Priority, Issue key. Existing rows matched by Issue key, then
      by embedded "REQ-xxx:" prefix, then by exact title. */
   importJiraRequirements(text) {
+    if (!Store._tx) throw new Error("CSV imports must be staged or run inside Store.command()");
     const rows = this.parseCSV(text);
     if (!rows.length) throw new Error("Empty file");
     const head = rows[0].map(h => h.trim().toLowerCase());
@@ -120,10 +127,13 @@ const IO = {
       };
       if (key) patch.extKey = key;
       let existing =
-        (key && Store.all("requirements").find(r => r.extKey === key)) ||
-        (codeHint && Store.all("requirements").find(r => r.code === codeHint)) ||
-        Store.all("requirements").find(r => r.title === title);
-      if (existing) { Store.update("requirements", existing.id, patch); updated++; }
+        (key && this.unique('requirements',r=>r.extKey===key,'requirement issue key')) ||
+        (codeHint && this.unique('requirements',r=>r.code===codeHint,'requirement code')) ||
+        this.unique('requirements',r=>r.title===title,'requirement title');
+      if (existing) {
+        if(iDesc<0)delete patch.text; if(iPri<0)delete patch.priority;
+        Store.update('requirements',existing.id,patch);updated++;
+      }
       else {
         Store.add("requirements", Object.assign({ type: "Functional", method: "Test", measure: "None", threshold: "", objective: "", componentIds: [] }, patch));
         added++;
@@ -181,16 +191,17 @@ const IO = {
                 component: iComp >= 0 ? row[iComp] || "" : "", key: iKey >= 0 ? (row[iKey] || "").trim() : "", steps: [] };
         groups.push(cur);
       }
+      if (!cur && row.some(c=>c.trim())) throw new Error('Zephyr step row has no preceding case name');
       if (cur && iStep >= 0 && (row[iStep] || "").trim()) cur.steps.push(row[iStep].trim());
     }
 
     const findOrCreateComponent = name => {
       name = (name || "").trim();
       if (name) {
-        const hit = Store.all("components").find(c => c.name.toLowerCase() === name.toLowerCase());
+        const hit = this.unique('components',c=>c.name.toLowerCase()===name.toLowerCase(),'component name');
         if (hit) return hit.id;
       }
-      let sys = Store.all("systems").find(s => s.name === "Imported");
+      let sys = this.unique('systems',s=>s.name==='Imported','Imported system');
       if (!sys) sys = Store.add("systems", { name: "Imported", description: "Container for entities brought in via CSV import — reassign as needed." });
       const comp = Store.add("components", { systemId: sys.id, name: name || "Imported Cases", description: "Created during CSV import." });
       return comp.id;
@@ -201,16 +212,19 @@ const IO = {
     for (const g of groups) {
       const codeHit = (g.labels.match(/TC-\d+/) || [])[0];
       const existing =
-        (g.key && Store.all("cases").find(tc => tc.extKey === g.key)) ||
-        (codeHit ? Store.all("cases").find(tc => tc.code === codeHit) : null);
+        (g.key && this.unique('cases',tc=>tc.extKey===g.key,'test case issue key')) ||
+        (codeHit ? this.unique('cases',tc=>tc.code===codeHit,'test case code') : null);
       const patch = {
         title: g.name,
         objective: g.objective,
-        priority: validPri.includes(g.priority) ? g.priority : "Medium"
+        priority: g.priority || "Medium"
       };
       if (g.key) patch.extKey = g.key;
       let target;
-      if (existing) { target = Store.update("cases", existing.id, patch); updated++; }
+      if (existing) {
+        if(iObj<0)delete patch.objective; if(iPri<0)delete patch.priority;
+        target=Store.update('cases',existing.id,patch);updated++;
+      }
       else {
         target = Store.add("cases", Object.assign(patch, {
           componentId: findOrCreateComponent(g.component),

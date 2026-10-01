@@ -16,98 +16,147 @@ const CODE_PAD = { systems: 2, components: 2, procedures: 2, plans: 2, resources
 const Store = {
   db: null,
 
-  load() {
+  // All UI mutations enter command(), which serializes writers using Web Locks.
+  _raw: null,
+  _committed: null,
+  _tx: null,
+  failedDraft: null,
+  stage(fn) {
+    const db=this.db, tx=this._tx, undo=this.undoStack.slice();
     try {
-      let raw = localStorage.getItem(DB_KEY);
-      if (!raw) {
-        for (const oldKey of OLD_DB_KEYS) {
-          raw = localStorage.getItem(oldKey);
-          if (raw) { localStorage.removeItem(oldKey); break; }
-        }
-      }
-      if (raw) { this.db = JSON.parse(raw); this.migrate(); return; }
-    } catch (e) { /* corrupted or storage unavailable — fall through to seed */ }
-    this.db = JSON.parse(JSON.stringify(SEED_DB));
-    this.migrate();
+      this.db=DataGuard.clone(db);this._tx={effects:[],replacement:false};
+      const result=fn();DataGuard.validate(this.db);
+      return {db:this.db,result};
+    } finally {this.db=db;this._tx=tx;this.undoStack=undo;}
   },
-
-  /* Upgrade older saved databases in place. */
-  migrate() {
-    const db = this.db;
-    db.resources = db.resources || [];
-    db.meta.seq.resources = db.meta.seq.resources || db.resources.length;
-    (db.criteria || []).forEach(c => {
-      if (!c.parentType) { c.parentType = "procedure"; c.parentId = c.procedureId; }
-    });
-    (db.requirements || []).forEach(r => {
-      if (r.measure === undefined) { r.measure = "None"; r.threshold = ""; r.objective = ""; }
-    });
-    (db.cases || []).forEach(tc => {
-      if (tc.venue === undefined) tc.venue = "";
-      if (tc.testType === undefined) tc.testType = "";
-      if (!Array.isArray(tc.resourceIds)) tc.resourceIds = [];
-    });
-    db.decisions = db.decisions || [];
-    db.events = db.events || [];
-    db.meta.seq.decisions = db.meta.seq.decisions || db.decisions.length;
-    db.meta.seq.events = db.meta.seq.events || db.events.length;
-    db.meta.seq.notes = db.meta.seq.notes || 0;
-    /* older plans carried a free-text decision — promote it to a Decision entity */
-    (db.plans || []).forEach(p => {
-      if (p.decisionId === undefined) p.decisionId = "";
-      if (p.decision && !p.decisionId) {
-        let dec = db.decisions.find(d => d.title === p.decision);
-        if (!dec) {
-          dec = { title: p.decision, status: "Pending", date: "", authority: "", description: "", requirementIds: [] };
-          dec.code = this.nextCode("decisions");
-          dec.id = this.nextId("decisions");
-          db.decisions.push(dec);
+  async command(label, fn) {
+    if (!globalThis.navigator?.locks) throw new Error('This browser cannot coordinate safe writes. Use a current browser with Web Locks; export remains available.');
+    return navigator.locks.request(DB_KEY, () => this.transaction(label, fn));
+  },
+  async transaction(label, fn) {
+    if (this._tx) return fn();
+    const before = this._committed || JSON.stringify(this.db);
+    const undo = this.undoStack.slice();
+    const original=this.db;
+    const tx = this._tx = {label, effects: [], replacement: false};
+    let result;
+    try {
+      result = fn();
+      if (result && typeof result.then === 'function') throw new Error('Commands must be synchronous inside the storage lock.');
+      // Re-importing the same payload is a no-op, including its prior receipt.
+      if (tx.replacement) {
+        const prior=JSON.parse(before), last=prior.audit?.at(-1);
+        if (last?.coll==='database' && last.action==='replaced') {
+          prior.audit.pop();
+          if(JSON.stringify(prior)===JSON.stringify(this.db))this.db=JSON.parse(before);
         }
-        p.decisionId = dec.id;
       }
-      delete p.decision;
-    });
-    (db.decisions || []).forEach(d => { if (!Array.isArray(d.requirementIds)) d.requirementIds = []; });
-    (db.events || []).forEach(ev => { if (!Array.isArray(ev.notes)) ev.notes = []; });
-    db.defects = db.defects || [];
-    db.meta.seq.defects = db.meta.seq.defects || db.defects.length;
-    db.snapshots = db.snapshots || [];
-    (db.risks || []).forEach(r => {
-      if (r.initialLikelihood === undefined) { r.initialLikelihood = r.likelihood; r.initialImpact = r.impact; }
-      if (r.residualLikelihood === undefined) { r.residualLikelihood = null; r.residualImpact = null; }
-    });
-    (db.runs || []).forEach(r => {
-      if (r.measured === undefined) r.measured = "";
-      if (r.evidence === undefined) r.evidence = "";
-    });
-    (db.defects || []).forEach(d => { if (!Array.isArray(d.caseIds)) d.caseIds = []; });
-    db.audit = db.audit || [];
-    if (db.meta.jiraBaseUrl === undefined) db.meta.jiraBaseUrl = "";
-    db.documents = db.documents || [];
-    db.meta.seq.documents = db.meta.seq.documents || db.documents.length;
-    (db.requirements || []).forEach(r => { if (r.extKey === undefined) r.extKey = ""; });
-    (db.cases || []).forEach(tc => {
-      if (tc.extKey === undefined) tc.extKey = "";
-      if (!Array.isArray(tc.extLinks)) tc.extLinks = [];
-    });
-    (db.plans || []).forEach(p => {
-      if (p.extKey === undefined) p.extKey = "";
-      if (!Array.isArray(p.extLinks)) p.extLinks = [];
-    });
-    (db.runs || []).forEach(r => { if (r.extKey === undefined) r.extKey = ""; });
+      if (JSON.stringify(this.db) !== before) {
+        if (!tx.replacement) this.reconcileRuns(JSON.parse(before));
+        DataGuard.validate(this.db);
+        if (!tx.replacement) this.auditChanges(JSON.parse(before), label);
+        else this.db.audit.push({ts:new Date().toISOString(),coll:'database',entityId:'database',code:'',action:'replaced',summary:label+'; previous active bytes retained in recovery storage'});
+        await this.persist();
+      }
+    } catch (err) {
+      try {this.failedDraft = JSON.stringify(this.db);}catch(_){this.failedDraft=null;}
+      this.db = DataGuard.restore(original,JSON.parse(before));
+      this.undoStack = undo;
+      this._tx = null;
+      throw err;
+    }
+    this._tx = null;
+    for (const effect of tx.effects) {
+      try { effect(); }
+      catch (err) {
+        console.error(err);
+        if (typeof Toast !== 'undefined') Toast.show('The command completed, but the display could not refresh. Reload to view the saved data.',true);
+      }
+    }
+    return result;
+  },
+  effect(fn) { if (this._tx) this._tx.effects.push(fn); else fn(); },
+  load() {
+    const active = localStorage.getItem(DB_KEY);
+    let raw = active;
+    if (raw === null) for (const key of OLD_DB_KEYS) {
+      const old = localStorage.getItem(key);
+      if (old !== null) { raw = old; break; }
+    }
+    // Never seed when data exists but cannot be read, parsed, validated or migrated.
+    const candidate = DataGuard.normalize(raw === null ? SEED_DB : JSON.parse(raw));
+    this.db = candidate.db;
+    this._raw = active;
+    // Loading is read-only. The original bytes remain until a verified write.
+    this._committed = JSON.stringify(this.db);
+    this.loadChanges = candidate.changes;
+    return this.db;
+  },
+  migrate() {
+    this.db = DataGuard.normalize(this.db).db;
     this.save();
+  },
+  async persist() {
+    const next=JSON.stringify(this.db), previous=this._raw;
+    await WriteFence.commit(DB_KEY,previous,next,()=>this.persistLocal(next,previous),()=>{
+      if(previous===null)localStorage.removeItem(DB_KEY);else localStorage.setItem(DB_KEY,previous);
+    });
+    this._raw=next;this._committed=next;this.failedDraft=null;
+  },
+  persistLocal(next, previous) {
+    if (localStorage.getItem(DB_KEY) !== this._raw) throw new Error('Another tab or release changed this database. Export your unsaved draft, then reload before editing.');
+    // Backup before replacement. Quota failure aborts; never delete the old copy to make room.
+    if (previous !== null) {
+      localStorage.setItem(DB_KEY + '-recovery', previous);
+      if (localStorage.getItem(DB_KEY + '-recovery') !== previous) throw new Error('Recovery copy verification failed; save stopped.');
+    }
+    localStorage.setItem(DB_KEY, next);
+    try {
+      if (localStorage.getItem(DB_KEY) !== next) throw new Error('Saved data could not be verified.');
+    } catch (err) {
+      try {
+        if (previous === null) localStorage.removeItem(DB_KEY);
+        else localStorage.setItem(DB_KEY, previous);
+      } catch (_) { /* Original bytes remain in the recovery key. */ }
+      throw err;
+    }
+  },
+  auditChanges(before, label) {
+    const ts = new Date().toISOString();
+    const append = (coll, old, item) => {
+      if (JSON.stringify(old) === JSON.stringify(item)) return;
+      const e = item || old;
+      const fields = [...new Set([...Object.keys(old || {}), ...Object.keys(item || {})])].filter(k=>JSON.stringify(old?.[k])!==JSON.stringify(item?.[k]));
+      const describe=(key,value)=>key==='dataUrl'&&value ? `[embedded content: ${value.length} characters]` : value === undefined ? null : DataGuard.clone(value);
+      const changes=Object.fromEntries(fields.map(key=>[key,{before:describe(key,old?.[key]),after:describe(key,item?.[key])}]));
+      this.db.audit.push({ts, coll, entityId:e.id || 'meta', code:e.code || '', action:!old?'created':!item?'deleted':'updated', summary:label + ': ' + fields.join(', '),changes});
+    };
+    for (const coll of DataGuard.collections.filter(c=>!['audit','snapshots'].includes(c))) {
+      const old = new Map((before[coll] || []).map(e=>[e.id,e]));
+      const current = new Map((this.db[coll] || []).map(e=>[e.id,e]));
+      for (const id of new Set([...old.keys(),...current.keys()])) append(coll,old.get(id),current.get(id));
+    }
+    append('meta', before.meta, this.db.meta);
+    if (JSON.stringify(before.snapshots)!==JSON.stringify(this.db.snapshots)) this.db.audit.push({ts,coll:'snapshots',entityId:'snapshots',code:'',action:'updated',summary:label});
+  },
+  reconcileRuns(before) {
+    const old=new Map(before.runs.map(r=>[r.id,r]));
+    const now=new Map(this.db.runs.map(r=>[r.id,r]));
+    const affected=new Set();
+    for(const id of new Set([...old.keys(),...now.keys()])) {
+      const a=old.get(id), b=now.get(id);
+      if(JSON.stringify(a)!==JSON.stringify(b)) { if(a)affected.add(a.caseId); if(b)affected.add(b.caseId); }
+    }
+    for(const id of affected) {
+      const tc=this.get('cases',id); if(!tc)continue;
+      const run=this.latestRun(id);
+      tc.status=run?({Pass:'Complete',Fail:'In Progress','In Progress':'In Progress',Blocked:'Blocked'}[run.result]):'Draft';
+    }
   },
 
   /* ---------- audit trail ---------- */
-  logAudit(coll, entity, action, summary) {
-    if (!entity || !entity.id) return;
-    this.db.audit = this.db.audit || [];
-    this.db.audit.push({
-      ts: new Date().toISOString().slice(0, 16).replace("T", " "),
-      coll, entityId: entity.id, code: entity.code || "", action, summary: summary || ""
-    });
-    if (this.db.audit.length > 600) this.db.audit = this.db.audit.slice(-600);
-  },
+  // Compatibility hook: commit-time diff auditing covers direct mutations too.
+  logAudit() {},
 
   auditOf(entityId) {
     return (this.db.audit || []).filter(a => a.entityId === entityId);
@@ -122,9 +171,12 @@ const Store = {
   },
 
   undo() {
+    if (!this._tx) throw new Error('Use Store.command() for undo.');
     const snap = this.undoStack.pop();
     if (!snap) return false;
+    const audit=this.db.audit;
     this.db = JSON.parse(snap);
+    this.db.audit=audit;
     this.save();
     return true;
   },
@@ -145,23 +197,25 @@ const Store = {
     const verified = reqs.filter(r => this.reqStatus(r.id) === "verified").length;
     const defOpen = this.openDefects().length;
     this.db.snapshots.push({ date: today, pass, fail, other, verified, reqTotal: reqs.length, defOpen });
-    if (this.db.snapshots.length > 120) this.db.snapshots = this.db.snapshots.slice(-120);
+    // Preserve historical snapshots; no silent pruning.
     this.save();
   },
 
   save() {
-    try { localStorage.setItem(DB_KEY, JSON.stringify(this.db)); }
-    catch (e) { Toast.show("Warning: could not persist to localStorage", true); }
+    if (this._tx) return;
+    throw new Error('Writes must run inside Store.command().');
   },
 
   reset() {
-    this.db = JSON.parse(JSON.stringify(SEED_DB));
-    this.migrate();
+    this.checkpoint();
+    this._tx.replacement = true;
+    this.db = DataGuard.normalize(SEED_DB).db;
   },
 
   /* Wipe everything and begin a fresh, empty program. */
   startBlank(programName) {
     const keepJira = (this.db && this.db.meta && this.db.meta.jiraBaseUrl) || "";
+    this._tx.replacement = true;
     this.db = {
       meta: { program: programName || "New T&E Program", version: 2, jiraBaseUrl: keepJira, seq: {} },
       systems: [], components: [], requirements: [], cases: [], procedures: [], criteria: [],
@@ -189,15 +243,22 @@ const Store = {
 
   nextId(coll) {
     this.db.meta.seq[coll] = (this.db.meta.seq[coll] || 0) + 1;
-    return `${coll.slice(0, 3)}-${Date.now().toString(36)}-${this.db.meta.seq[coll]}`;
+    const id = coll.slice(0, 3) + '-' + Date.now().toString(36) + '-' + this.db.meta.seq[coll];
+    const all = DataGuard.collections.flatMap(c=>this.db[c] || []).concat(this.db.risks.flatMap(r=>r.mitigations),this.db.events.flatMap(e=>e.notes));
+    return all.some(e=>e.id===id) ? this.nextId(coll) : id;
   },
 
   nextCode(coll) {
-    const n = (this.db.meta.seq[coll] || 0) + 1; // nextId will bump seq; peek ahead
+    let n = (this.db.meta.seq[coll] || 0) + 1;
+    while (this.all(coll).some(e=>e.code===CODE_PREFIX[coll]+'-'+String(n).padStart(CODE_PAD[coll]||3,'0'))) n++;
+    this.db.meta.seq[coll] = n - 1;
     return `${CODE_PREFIX[coll]}-${String(n).padStart(CODE_PAD[coll] || 3, "0")}`;
   },
 
   add(coll, obj) {
+    if (!this._tx) throw new Error('Use Store.command() for changes.');
+    for(const key of DataGuard.arrays[coll]||[])if(obj[key]===undefined)obj[key]=[];
+    if (coll === 'runs' && obj.recordedAt === undefined) obj.recordedAt = new Date().toISOString();
     obj.code = obj.code || this.nextCode(coll);
     obj.id = this.nextId(coll);
     this.db[coll].push(obj);
@@ -207,6 +268,7 @@ const Store = {
   },
 
   update(coll, id, patch) {
+    if (!this._tx) throw new Error('Use Store.command() for changes.');
     const item = this.get(coll, id);
     if (!item) return null;
     const fmt = v => {
@@ -225,6 +287,7 @@ const Store = {
   },
 
   remove(coll, id) {
+    if (!this._tx) throw new Error('Use Store.command() for changes.');
     this.checkpoint();
     const item = this.get(coll, id);
     if (item) this.logAudit(coll, item, "deleted");
@@ -248,6 +311,7 @@ const Store = {
     }
     if (coll === "cases") {
       db.plans.forEach(p => p.caseIds = (p.caseIds || []).filter(x => x !== id));
+      db.runs.filter(r => r.caseId === id).forEach(r => this.cleanupRefs("runs", r.id));
       db.runs = db.runs.filter(r => r.caseId !== id);
       db.risks.forEach(r => r.relatedCaseIds = (r.relatedCaseIds || []).filter(x => x !== id));
       (db.defects || []).forEach(d => d.caseIds = (d.caseIds || []).filter(x => x !== id));
@@ -292,7 +356,12 @@ const Store = {
   casesOfRequirement(reqId) { return this.all("cases").filter(tc => (tc.requirementIds || []).includes(reqId)); },
   runsOf(caseId) {
     return this.all("runs").filter(r => r.caseId === caseId)
-      .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+      .sort((a, b) => this.compareRuns(a, b));
+  },
+  compareRuns(a, b) {
+    return (b.date || '').localeCompare(a.date || '') ||
+      (b.recordedAt || '').localeCompare(a.recordedAt || '') ||
+      String(b.id).localeCompare(String(a.id), 'en', {numeric:true});
   },
   latestRun(caseId) { return this.runsOf(caseId)[0] || null; },
   plansOf(caseId) { return this.all("plans").filter(p => (p.caseIds || []).includes(caseId)); },
@@ -377,14 +446,31 @@ const Store = {
   },
 
   /* -------- export / import -------- */
-  exportJSON() { return JSON.stringify(this.db, null, 2); },
+  exportJSON() { return JSON.stringify(this._tx ? JSON.parse(this._committed) : this.db, null, 2); },
 
+  prepareImport(text) { return DataGuard.normalize(JSON.parse(text)); },
   importJSON(text) {
-    const data = JSON.parse(text);
-    const required = ["systems", "components", "requirements", "cases", "procedures", "criteria", "plans", "runs", "risks", "meta"];
-    for (const k of required) if (!(k in data)) throw new Error(`Missing collection: ${k}`);
-    this.db = data;
-    this.migrate();
+    if (!this._tx) throw new Error('Use Store.command() for import.');
+    const candidate = this.prepareImport(text);
+    this.checkpoint();
+    this._tx.replacement = true;
+    this.db = candidate.db;
+    this.save();
+    return candidate;
+  },
+  deletionImpact(coll, id) {
+    const previous = this.db;
+    this.db = DataGuard.clone(previous);
+    this.db[coll] = this.db[coll].filter(e=>e.id!==id);
+    this.cleanupRefs(coll,id);
+    const lines = [];
+    for (const name of DataGuard.collections.filter(c=>!['audit','snapshots'].includes(c))) {
+      const removed = previous[name].filter(e=>!this.db[name].some(n=>n.id===e.id));
+      const changed = this.db[name].filter(e=>JSON.stringify(e)!==JSON.stringify(previous[name].find(n=>n.id===e.id)));
+      if (removed.length || changed.length) lines.push(name + ': ' + removed.length + ' deleted, ' + changed.length + ' updated');
+    }
+    this.db = previous;
+    return lines.join('; ');
   },
 
   /* -------- search -------- */

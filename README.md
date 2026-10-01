@@ -2,7 +2,20 @@
 
 Self-contained Test & Evaluation management tool. Plain HTML/CSS/JS — no build step, no dependencies, no server required.
 
-## Run it
+## Hardening and verification
+
+See [the hardening report](docs/HARDENING.md) for recovery, compatibility and browser requirements. Run `npm test` for core checks, or `npm run test:release` with developer Playwright and Chrome available for the full release gate. Runtime use still requires no installation or server.
+
+## Maintainer documentation
+
+- [Project handbook](docs/PROJECT-HANDBOOK.md) — purpose, source map, data model, workflows, exact status rules, and limitations.
+- [Architecture drawings](docs/ARCHITECTURE.md) — runtime, relationships, execution, and offline migration diagrams.
+- [Data compatibility contract](docs/DATA-COMPATIBILITY.md) — independent sensitive-data installations, safe upgrades, preservation rules, and release gates.
+- [Ten proposed upgrades](docs/UPGRADE-ROADMAP.md) — powerful local-only capabilities and their migration requirements.
+
+Future contributors should also read [AGENTS.md](AGENTS.md). The hardening report identifies implemented compatibility protections; the feature roadmap remains proposed work.
+
+## Launch
 
 **Double-click `index.html`.** That's it. Data persists in your browser's localStorage.
 

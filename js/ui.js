@@ -2,6 +2,14 @@
    UI helpers — escaping, chips/badges, modal forms, toasts
    ============================================================ */
 
+function safeHttp(value) {
+  if (typeof value !== 'string' || /[\u0000-\u0020\u007f]/.test(value) || !/^https?:\/\//i.test(value)) return '';
+  try { const url=new URL(value); return ['http:','https:'].includes(url.protocol) && !url.username && !url.password ? url.href : ''; } catch (_) { return ''; }
+}
+function externalLink(url, label) {
+  const safe=safeHttp(url);
+  return safe ? '<a class="ev-ref" href="'+esc(safe)+'" target="_blank" rel="noopener noreferrer">'+esc(label)+'</a>' : '<span class="ev-ref" title="Link disabled; use a valid HTTP(S) address">'+esc(label)+'</span>';
+}
 function esc(s) {
   return String(s == null ? "" : s)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
@@ -116,7 +124,9 @@ function toastUndo(msg) {
   Toast.show(msg, false, {
     label: "Undo",
     fn() {
-      if (Store.undo()) { Toast.show("Restored"); App.render(); App.refreshNavCounts(); }
+      Commands.run('Undo',()=>{
+        if (Store.undo()) { Toast.show("Restored"); App.render(); App.refreshNavCounts(); }
+      });
     }
   });
 }
@@ -182,7 +192,7 @@ const Modal = {
     root.querySelectorAll("[data-close]").forEach(b => b.addEventListener("click", Modal.close));
 
     const form = root.querySelector("#modal-form");
-    form.addEventListener("submit", e => {
+    form.addEventListener("submit", async e => {
       e.preventDefault();
       const out = {};
       for (const f of fields) {
@@ -195,15 +205,21 @@ const Modal = {
           out[f.key] = form.elements[f.key].value.trim();
         }
       }
-      onSubmit(out);
-      Modal.close();
+      const submit = form.querySelector('[type="submit"]');
+      if (submit.disabled) return;
+      submit.disabled = true;
+      const ok = await Commands.run(title, () => {
+        onSubmit(out);
+        Store.effect(() => { if (root.querySelector('#modal-form') === form) Modal.close(); });
+      });
+      if (!ok) submit.disabled = false;
     });
 
     const first = form.querySelector("input, textarea, select");
     if (first) first.focus();
   },
 
-  confirm(message, onYes) {
+  confirm(message, onYes, label = "Delete") {
     const root = document.getElementById("modal-root");
     root.innerHTML = `
       <div class="modal-scrim" data-scrim>
@@ -212,14 +228,18 @@ const Modal = {
           <div class="modal-body"><p style="margin:4px 0 0">${esc(message)}</p></div>
           <div class="modal-foot">
             <button type="button" class="btn btn-ghost" data-close>Cancel</button>
-            <button type="button" class="btn" id="confirm-yes" style="background:var(--red);color:#fff">Delete</button>
+            <button type="button" class="btn" id="confirm-yes" style="background:var(--red);color:#fff">${esc(label)}</button>
           </div>
         </div>
       </div>`;
     const scrim = root.querySelector("[data-scrim]");
     scrim.addEventListener("mousedown", e => { if (e.target === scrim) Modal.close(); });
     root.querySelectorAll("[data-close]").forEach(b => b.addEventListener("click", Modal.close));
-    root.querySelector("#confirm-yes").addEventListener("click", () => { Modal.close(); onYes(); });
+    root.querySelector("#confirm-yes").addEventListener("click", async e => {
+      const button=e.currentTarget; if(button.disabled)return; button.disabled=true;
+      const ok=await Commands.run(label,()=>{ onYes(); Store.effect(()=>{if(root.contains(button))Modal.close();}); });
+      if(!ok)button.disabled=false;
+    });
   }
 };
 
