@@ -97,6 +97,7 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
     await page.locator('#extlink-label').fill('Synthetic bug');
     await page.locator('[data-act="add-extlink"][data-coll="defects"]').click();
     await page.waitForFunction(()=>(Store.get('defects','def-1').extLinks||[]).some(l=>l.label==='Synthetic bug'));
+    await page.locator('#view a[href="https://example.test/browse/BUG-42"]').waitFor();
     assert.equal(await page.locator('#view a[href="https://example.test/browse/BUG-42"]').count(),1);
     await page.locator('[data-act="del-extlink"][data-coll="defects"]').first().click();
     await page.waitForFunction(()=>!(Store.get('defects','def-1').extLinks||[]).length);

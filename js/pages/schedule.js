@@ -5,39 +5,64 @@
 Views.schedule = function (params) {
   const typeF = params.get("type") || "";
   const statF = params.get("status") || "";
-  let events = Scope.list("events").slice().sort((a, b) => (a.start || "").localeCompare(b.start || ""));
+  let events = Scope.list("events");
   if (typeF) events = events.filter(ev => ev.type === typeF);
   if (statF) events = events.filter(ev => ev.status === statF);
 
+  // Past = its last day (end, else start) is before today. Everything else — including
+  // events in progress and undated ones — is upcoming.
   const today = todayISO();
-  const monthName = iso => new Date(iso + "T12:00:00").toLocaleDateString(undefined, { month: "long", year: "numeric" });
-  const dayOf = iso => iso.slice(8, 10);
-  const dowOf = iso => new Date(iso + "T12:00:00").toLocaleDateString(undefined, { weekday: "short" });
+  const lastDay = ev => ev.end && ev.end > (ev.start || "") ? ev.end : ev.start;
+  const isPast = ev => !!ev.start && lastDay(ev) < today;
+  const upcoming = events.filter(ev => !isPast(ev)).sort((a, b) => (a.start || "9999").localeCompare(b.start || "9999") || Store.byCodeOrder(a, b));
+  const past = events.filter(isPast).sort((a, b) => lastDay(b).localeCompare(lastDay(a)) || Store.byCodeOrder(a, b));
+  const gantt = campaignGantt(params);
 
-  let html = "", curMonth = "", todayPlaced = false;
-  for (const ev of events) {
+  return `
+    ${pageHead([{ label: "Schedule" }], "Program Schedule",
+      actBtn("+ New Event", "add-event", null, "", false),
+      "Test events, reviews, range windows, and decision points on one timeline. Open an event to track it and add dated notes.")}
+    ${gantt ? `<div class="sched-pin">${gantt}</div>` : ""}
+    <div class="filter-bar">
+      <select data-filter="type"><option value="">All types</option>${EVENT_TYPES.map(t => `<option ${typeF === t ? "selected" : ""}>${t}</option>`).join("")}</select>
+      <select data-filter="status"><option value="">All statuses</option>${EVENT_STATUSES.map(s => `<option ${statF === s ? "selected" : ""}>${s}</option>`).join("")}</select>
+      <span class="faint mono small">${events.length} shown · ${upcoming.length} upcoming · ${past.length} past</span>
+    </div>
+    ${events.length ? `
+      <h2 class="tl-section">Upcoming <span class="faint mono small">${upcoming.length} · from today ${esc(today)}, soonest first</span></h2>
+      ${upcoming.length ? timelineList(upcoming, false, today) : emptyMsg("Nothing upcoming in this filter.")}
+      <h2 class="tl-section past">Past <span class="faint mono small">${past.length} · most recent first</span></h2>
+      ${past.length ? timelineList(past, true, today) : emptyMsg("No past events in this filter.")}`
+      : emptyMsg("No events match the filter — add the first one.")}`;
+};
+
+/* Event cards grouped under month headings, in the order given. A past event still marked
+   Planned or In Progress is flagged so its status gets updated. */
+function timelineList(list, pastSection, today) {
+  const monthName = iso => new Date(iso + "T12:00:00").toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  let html = "", curMonth = null;
+  for (const ev of list) {
     const m = (ev.start || "").slice(0, 7);
-    if (!todayPlaced && ev.start && ev.start > today) {
-      html += `<div class="today-marker">Today · ${esc(today)}</div>`;
-      todayPlaced = true;
-    }
     if (m !== curMonth) {
       curMonth = m;
       html += `<div class="tl-month">${ev.start ? esc(monthName(ev.start)) : "Unscheduled"}</div>`;
     }
     const plan = ev.planId ? Store.get("plans", ev.planId) : null;
     const dec = ev.decisionId ? Store.get("decisions", ev.decisionId) : null;
-    const isPast = ev.start && ev.start < today && ev.status !== "In Progress";
     const noteCount = (ev.notes || []).length;
-    html += `<div class="tl-event${isPast ? " past" : ""}">
+    const pastDue = pastSection && ["Planned", "In Progress"].includes(ev.status);
+    const now = !pastSection && ev.start && ev.start <= today;
+    html += `<div class="tl-event${pastSection ? " past" : ""}${pastDue ? " past-due" : ""}">
       <div class="tl-date">
-        <span class="tl-dow">${esc(dowOf(ev.start))}</span>
-        <span class="tl-day">${esc(dayOf(ev.start))}</span>
+        <span class="tl-dow">${ev.start ? esc(new Date(ev.start + "T12:00:00").toLocaleDateString(undefined, { weekday: "short" })) : ""}</span>
+        <span class="tl-day">${ev.start ? esc(ev.start.slice(8, 10)) : "—"}</span>
         ${ev.end ? `<span class="tl-thru">→ ${esc(ev.end.slice(5))}</span>` : ""}
       </div>
       <div class="tl-body">
         <div class="tl-title"><a href="#/events/${ev.id}"><span class="code">${esc(ev.code)}</span> ${esc(ev.title)}</a></div>
         <div class="tl-meta">${badge(ev.type)} ${badge(ev.status)}
+          ${pastDue ? `<span class="tl-flag" title="This event's dates have passed but its status is still ${esc(ev.status)}">past due — update status</span>` : ""}
+          ${now ? `<span class="tl-flag now" title="Started on or before today and not yet over">happening now</span>` : ""}
           ${ev.location ? `<span class="faint mono small">📍 ${esc(ev.location)}</span>` : ""}
           ${noteCount ? `<span class="tl-notecount">✎ ${noteCount} note${noteCount === 1 ? "" : "s"}</span>` : ""}
         </div>
@@ -47,22 +72,8 @@ Views.schedule = function (params) {
       <div class="tl-actions">${actBtn("✎", "edit-event", ev.id, "", true, "btn-xs")}${actBtn("+ Note", "add-note", ev.id, "", true, "btn-xs")}</div>
     </div>`;
   }
-  if (!todayPlaced && events.length) html += `<div class="today-marker">Today · ${esc(today)}</div>`;
-
-  const gantt = campaignGantt(params);
-
-  return `
-    ${pageHead([{ label: "Schedule" }], "Program Schedule",
-      actBtn("+ New Event", "add-event", null, "", false),
-      "Test events, reviews, range windows, and decision points on one timeline. Open an event to track it and add dated notes.")}
-    ${gantt}
-    <div class="filter-bar">
-      <select data-filter="type"><option value="">All types</option>${EVENT_TYPES.map(t => `<option ${typeF === t ? "selected" : ""}>${t}</option>`).join("")}</select>
-      <select data-filter="status"><option value="">All statuses</option>${EVENT_STATUSES.map(s => `<option ${statF === s ? "selected" : ""}>${s}</option>`).join("")}</select>
-      <span class="faint mono small">${events.length} shown</span>
-    </div>
-    ${html || emptyMsg("No events match the filter — add the first one.")}`;
-};
+  return html;
+}
 
 /* ---------- campaign overview ----------
    Every position on the chart comes from ganttScale: whole UTC days mapped onto 0–100% of the

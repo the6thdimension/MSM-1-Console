@@ -481,6 +481,28 @@ test('phase 2: release readiness, build comparison and defect retest proposals',
   await S.command('del release',()=>S.remove('releases',rel.id));
   assert.equal(S.get('criteria',crit.id),null,'release criteria go with their release');h.DataGuard.validate(S.db);
 });
+test('schedule lists upcoming events first and past events in their own section, most recent first',async()=>{
+  const h=await ready(),S=h.Store;
+  const day=n=>new Date(Date.now()+n*864e5).toISOString().slice(0,10);
+  const ev=(title,start,end,status)=>S.add('events',{title,description:'',type:'Test Event',status,start,end,location:'',planId:'',decisionId:'',notes:[]});
+  await S.command('events',()=>{
+    for(const e of S.all('events').slice())S.remove('events',e.id);
+    ev('Synthetic far past',day(-40),'','Complete');
+    ev('Synthetic recent past',day(-3),'','Planned');
+    ev('Synthetic running now',day(-5),day(5),'In Progress');
+    ev('Synthetic tomorrow',day(1),'','Planned');
+    ev('Synthetic next month',day(30),'','Planned');
+  });
+  const full=h.Views.schedule(new URLSearchParams());
+  // Event titles also appear in the chart's tooltips; check order within the dated list only.
+  const html=full.slice(full.indexOf('class="tl-section"'));
+  const at=t=>html.indexOf(t);
+  assert.ok(at('>Upcoming')<at('>Past'),'upcoming section comes first');
+  assert.ok(at('Synthetic running now')<at('Synthetic tomorrow')&&at('Synthetic tomorrow')<at('Synthetic next month'),'upcoming: soonest first, events still running included');
+  assert.ok(at('>Past')<at('Synthetic recent past')&&at('Synthetic recent past')<at('Synthetic far past'),'past: below upcoming, most recent first');
+  assert.match(html,/Synthetic recent past[^]*?past due — update status/,'a past event still Planned is flagged');
+  assert.match(full,/class="sched-pin"/,'campaign overview is wrapped to stay pinned');
+});
 test('runtime shell has no remote assets and disallows background connections',()=>{
   const html=fs.readFileSync(path.join(root,'index.html'),'utf8');assert.doesNotMatch(html,/(?:src|href)="https?:/);assert.match(html,/connect-src 'none'/);
   assert.doesNotMatch(fs.readFileSync(path.join(root,'js/views.js'),'utf8'),/fetch\(/);
