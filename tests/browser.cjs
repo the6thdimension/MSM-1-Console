@@ -230,7 +230,7 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
     await tab.close();await page.reload();await page.waitForFunction(()=>!!Store.db&&!Store._tx);
     console.log('PASS real browser competing tabs and five simultaneous-write races');
 
-    for(const route of ['dashboard','schedule','systems','requirements','cases','trace','idsk','procedures','plans','runs','defects','risks','resources','documents','interchange','sitrep','decisions/dec-1/report','testruns/tr-1','components/cmp-14','ownership','releases','releases/rel-1','builds/bld-9','runs/run-7','runs?group=build']) {
+    for(const route of ['dashboard','schedule','systems','requirements','cases','trace','idsk','procedures','plans','runs','defects','risks','resources','documents','interchange','sitrep','decisions/dec-1/report','testruns/tr-1','components/cmp-14','ownership','releases','releases/rel-1','builds/bld-9','runs/run-7','runs?group=build','documents/doc-4']) {
       await go('#/'+route);
       assert.doesNotMatch(await page.locator('#view').textContent(),/Something went wrong rendering/);
     }

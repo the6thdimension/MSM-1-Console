@@ -550,6 +550,26 @@ test('runs have their own page and the log filters and groups',async()=>{
   assert.match(h.Views.runs(new URLSearchParams('build=none')),/runs-log|No runs match/);
   assert.match(h.Views.runs(new URLSearchParams(`q=${encodeURIComponent(tc.code)}`)),new RegExp(tc.code));
 });
+test('registers keep key columns on narrow screens; documents have a page; ownership overview is narrow',async()=>{
+  const h=await ready(),S=h.Store;
+  // Low-priority columns carry col-lo/col-mid; identifying and status columns never do.
+  const def=h.Views.defects(new URLSearchParams());
+  assert.match(def,/<th class="col-lo">Builds<\/th>/);assert.match(def,/<th>Severity<\/th><th>Status<\/th>/);
+  assert.match(h.Views.resources(),/<th class="col-lo">Verification<\/th>/);
+  assert.match(h.Views.resources(),/<th>Accreditation<\/th>/);
+  // Ownership overview: one row per record type, one column per system plus program-level.
+  const own=h.Views.ownership(new URLSearchParams());
+  const head=own.match(/<thead><tr><th>Record type<\/th>([^]*?)<\/tr><\/thead>/);
+  assert.ok(head,'record types are rows');
+  assert.equal([...head[1].matchAll(/<th/g)].length,S.all('systems').length+1,'one column per system plus program-level');
+  // Documents link to their own page.
+  let d;await S.command('doc',()=>{d=S.add('documents',{title:'Synthetic memo',docType:'Memo',url:'\\\\share\\memo.docx',fileName:'',fileSize:0,fileType:'',dataUrl:'',relatedCodes:'',added:'2026-10-01',description:'d'});});
+  assert.equal(vm.runInContext(`ROUTE_OF.documents(${JSON.stringify(d.id)})`,h.ctx),`#/documents/${d.id}`);
+  assert.match(h.Views.documents(new URLSearchParams()),new RegExp(`href="#/documents/${d.id}"`));
+  const page=h.Views.documentDetail(d.id);
+  assert.match(page,/A file path on your share/,'share paths are explained, not linked');
+  assert.match(h.Views.documentDetail('doc-missing'),/not found/i);
+});
 test('runtime shell has no remote assets and disallows background connections',()=>{
   const html=fs.readFileSync(path.join(root,'index.html'),'utf8');assert.doesNotMatch(html,/(?:src|href)="https?:/);assert.match(html,/connect-src 'none'/);
   assert.doesNotMatch(fs.readFileSync(path.join(root,'js/views.js'),'utf8'),/fetch\(/);

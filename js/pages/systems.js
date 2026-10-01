@@ -60,9 +60,9 @@ Views.systemDetail = function (id) {
     ${regressionScopePanel(s)}
     ${systemReleasePanel(s)}
     ${panel("Components", compRows
-      ? `<div class="table-scroll"><table class="data"><thead><tr><th>Code</th><th>Component</th><th>Status</th><th>Test Cases</th><th>Reqs</th><th>Open Defects</th><th></th></tr></thead><tbody>${compRows}</tbody></table></div>`
+      ? `<div class="table-scroll"><table class="data"><thead><tr><th>Code</th><th>Component</th><th>Status</th><th class="col-mid">Test Cases</th><th class="col-lo">Reqs</th><th class="col-lo">Open Defects</th><th></th></tr></thead><tbody>${compRows}</tbody></table></div>`
       : emptyMsg("No components under this system yet — add one."), "", true)}
-    ${sysCases.length ? panel("System-Level Test Cases", `<div class="table-scroll"><table class="data"><thead><tr><th>Code</th><th>Title</th><th>Pri</th><th>Status</th><th>Latest Run</th></tr></thead><tbody>${sysCases.map(caseRow).join("")}</tbody></table></div>`, "", true) : ""}
+    ${sysCases.length ? panel("System-Level Test Cases", `<div class="table-scroll"><table class="data"><thead><tr><th>Code</th><th>Title</th><th class="col-lo">Pri</th><th class="col-mid">Status</th><th>Latest Run</th></tr></thead><tbody>${sysCases.map(caseRow).join("")}</tbody></table></div>`, "", true) : ""}
     ${testRunsPanel("Test Runs for This System", runs, "No test runs yet — start a full regression above.")}`;
 };
 
@@ -106,7 +106,7 @@ Views.componentDetail = function (id) {
     <div class="grid-2">
       <div>
         ${panel("Test Cases", caseRows
-          ? `<div class="table-scroll"><table class="data"><thead><tr><th>Code</th><th>Title</th><th>Pri</th><th>Status</th><th>Latest Run</th></tr></thead><tbody>${caseRows}</tbody></table></div>`
+          ? `<div class="table-scroll"><table class="data"><thead><tr><th>Code</th><th>Title</th><th class="col-lo">Pri</th><th class="col-mid">Status</th><th>Latest Run</th></tr></thead><tbody>${caseRows}</tbody></table></div>`
           : emptyMsg("No test cases for this component yet."), "", true)}
         ${panel("Subcomponents", childRows
           ? `<div class="table-scroll"><table class="data"><thead><tr><th>Code</th><th>Subcomponent</th><th>Status</th><th>Cases</th><th>Nested</th></tr></thead><tbody>${childRows}</tbody></table></div>`

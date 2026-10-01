@@ -140,7 +140,7 @@ Views.dashboard = function () {
         ${panel("M&S VV&A Status", (() => {
           const assets = Scope.list("resources").filter(r => r.vvaRequired);
           if (!assets.length) return `<span class="faint small">No M&S assets registered — add them under M&S / VV&A.</span>`;
-          return `<div class="table-scroll"><table class="data"><thead><tr><th>Asset</th><th>Ver</th><th>Val</th><th>Accreditation</th></tr></thead><tbody>${
+          return `<div class="table-scroll"><table class="data"><thead><tr><th>Asset</th><th class="col-mid">Ver</th><th class="col-mid">Val</th><th>Accreditation</th></tr></thead><tbody>${
             assets.map(r => `<tr><td>${chip("resources", r)}</td><td>${badge(r.verification)}</td><td>${badge(r.validation)}</td><td>${badge(r.accreditation)}</td></tr>`).join("")
           }</tbody></table></div>`;
         })(), `<a class="btn btn-ghost btn-sm" href="#/resources">All</a>`, true)}
@@ -211,19 +211,19 @@ Views.sitrep = function () {
       `${esc(Store.db.meta.program || "")} · Reporting period ${esc(weekAgo)} → ${esc(today)} · Generated ${esc(today)}`)}
     ${panel(Scope.system ? "1 · Week Over Week (program-wide snapshots)" : "1 · Week Over Week", deltaHtml)}
     ${panel(`2 · Test Runs This Week (${weekRuns.length})`, runRows
-      ? `<div class="table-scroll"><table class="data"><thead><tr><th>Run</th><th>Date</th><th>Test Case</th><th>Result</th><th>Measured</th><th>Notes</th></tr></thead><tbody>${runRows}</tbody></table></div>`
+      ? `<div class="table-scroll"><table class="data"><thead><tr><th>Run</th><th>Date</th><th>Test Case</th><th>Result</th><th class="col-lo">Measured</th><th class="col-lo">Notes</th></tr></thead><tbody>${runRows}</tbody></table></div>`
       : emptyMsg("No runs recorded this week."), "", true)}
     ${panel(`3 · Defects — ${defOpened.length} opened, ${defClosed.length} closed this week`, (defOpened.length || defClosed.length)
-      ? `<div class="table-scroll"><table class="data"><thead><tr><th>Code</th><th>Defect</th><th>Severity</th><th>Status</th><th>Owner</th></tr></thead><tbody>${defOpened.map(defRow).join("")}${defClosed.filter(d => !defOpened.includes(d)).map(defRow).join("")}</tbody></table></div>`
+      ? `<div class="table-scroll"><table class="data"><thead><tr><th>Code</th><th>Defect</th><th>Severity</th><th>Status</th><th class="col-lo">Owner</th></tr></thead><tbody>${defOpened.map(defRow).join("")}${defClosed.filter(d => !defOpened.includes(d)).map(defRow).join("")}</tbody></table></div>`
       : emptyMsg("No defect activity this week."), "", true)}
     ${panel("4 · Next 14 Days", upRows
-      ? `<div class="table-scroll"><table class="data"><thead><tr><th>Date</th><th>Event</th><th>Type</th><th>Location</th></tr></thead><tbody>${upRows}</tbody></table></div>`
+      ? `<div class="table-scroll"><table class="data"><thead><tr><th>Date</th><th>Event</th><th class="col-mid">Type</th><th class="col-lo">Location</th></tr></thead><tbody>${upRows}</tbody></table></div>`
       : emptyMsg("Nothing scheduled in the next two weeks."), "", true)}
     ${panel("5 · Decision Readiness", decRows
       ? `<div class="table-scroll"><table class="data"><thead><tr><th>Code</th><th>Decision</th><th>Date</th><th>Status</th><th>Evidence</th></tr></thead><tbody>${decRows}</tbody></table></div>`
       : emptyMsg("No open decisions."), "", true)}
     ${panel("6 · High / Critical Risks", riskRows
-      ? `<div class="table-scroll"><table class="data"><thead><tr><th>Code</th><th>Risk</th><th>Score / Trend</th><th>Status</th><th>Owner</th></tr></thead><tbody>${riskRows}</tbody></table></div>`
+      ? `<div class="table-scroll"><table class="data"><thead><tr><th>Code</th><th>Risk</th><th>Score / Trend</th><th>Status</th><th class="col-lo">Owner</th></tr></thead><tbody>${riskRows}</tbody></table></div>`
       : emptyMsg("No high or critical risks open."), "", true)}`;
 };
 

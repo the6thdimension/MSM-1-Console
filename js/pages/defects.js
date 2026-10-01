@@ -23,11 +23,11 @@ Views.defects = function (params) {
       <td>${badge(d.severity)}</td>
       <td><button class="badge-btn" data-act="cycle-defect-status" data-id="${d.id}" title="Click to advance status">${badge(d.status)}</button></td>
       <td class="num ${hot ? "age-hot" : ""}">${age != null ? `${age}d${d.closed ? "" : " open"}` : "—"}</td>
-      <td>${comp ? chip("components", comp) : "—"}</td>
-      <td class="small">${defectBuildsCell(d)}</td>
-      <td>${cases.map(tc => codeLink("cases", tc)).join(" ") || `<span class="faint small">—</span>`}</td>
-      <td class="num">${esc(d.opened || "")}</td>
-      <td>${esc(d.owner || "")}</td>
+      <td class="col-mid">${comp ? chip("components", comp) : "—"}</td>
+      <td class="small col-lo">${defectBuildsCell(d)}</td>
+      <td class="col-lo">${cases.map(tc => codeLink("cases", tc)).join(" ") || `<span class="faint small">—</span>`}</td>
+      <td class="num col-lo">${esc(d.opened || "")}</td>
+      <td class="col-mid">${esc(d.owner || "")}</td>
     </tr>`;
   }).join("");
 
@@ -43,7 +43,7 @@ Views.defects = function (params) {
       <span class="faint mono small">${defects.length} shown · ${open} open</span>
     </div>
     ${panel("Register", rows
-      ? `<div class="table-scroll"><table class="data"><thead><tr><th>Code</th><th>Defect</th><th>Severity</th><th>Status</th><th>Age</th><th>Component</th><th>Builds</th><th>Cases</th><th>Opened</th><th>Owner</th></tr></thead><tbody>${rows}</tbody></table></div>`
+      ? `<div class="table-scroll"><table class="data"><thead><tr><th>Code</th><th>Defect</th><th>Severity</th><th>Status</th><th>Age</th><th class="col-mid">Component</th><th class="col-lo">Builds</th><th class="col-lo">Cases</th><th class="col-lo">Opened</th><th class="col-mid">Owner</th></tr></thead><tbody>${rows}</tbody></table></div>`
       : emptyMsg("No defects match the filter."), "", true)}`;
 };
 

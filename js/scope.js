@@ -53,13 +53,15 @@ Views.ownership = function (params) {
       `<div class="table-scroll"><table class="data"><thead><tr><th class="bulk-cell"></th><th>Code</th><th>Record</th><th>Suggested Owner</th></tr></thead><tbody>${rows}</tbody></table></div>`, "", true);
   }).join("");
 
-  const overview = systems.map(s => `<tr><td>${chip("systems", s)}</td>${Store.OWNED.map(c => `<td class="num">${Store.all(c).filter(r => Store.ownerOf(c, r) === s.id).length || `<span class="faint">0</span>`}</td>`).join("")}</tr>`).join("")
-    + `<tr><td><span class="faint">Program-level / shared</span></td>${Store.OWNED.map(c => `<td class="num">${Store.all(c).filter(r => !Store.ownerOf(c, r)).length || `<span class="faint">0</span>`}</td>`).join("")}</tr>`;
+  // One row per record type and one column per system, so the table stays narrow however
+  // many record types there are.
+  const cell = n => `<td class="num">${n || `<span class="faint">0</span>`}</td>`;
+  const overview = Store.OWNED.map(c => `<tr><td>${esc(OWNED_LABELS[c])}</td>${systems.map(s => cell(Store.all(c).filter(r => Store.ownerOf(c, r) === s.id).length)).join("")}${cell(Store.all(c).filter(r => !Store.ownerOf(c, r)).length)}</tr>`).join("");
 
   return `
     ${pageHead([{ label: "Ownership" }], "Assign to Systems", "",
       "Every record belongs to a system or is program-level (shared). Structural records — components, cases, runs, criteria — follow their parents automatically. Here you assign the rest. Suggestions come from a record's links and are applied only when you confirm.")}
-    ${panel("Ownership by System", `<div class="table-scroll"><table class="data"><thead><tr><th>System</th>${Store.OWNED.map(c => `<th>${esc(OWNED_LABELS[c].replace(/ \(.*\)| \/.*/, ""))}</th>`).join("")}</tr></thead><tbody>${overview}</tbody></table></div>`, "", true)}
+    ${panel("Ownership by System", `<div class="table-scroll"><table class="data"><thead><tr><th>Record type</th>${systems.map(s => `<th><a href="#/systems/${s.id}" title="${esc(s.name)}">${esc(s.code)}</a></th>`).join("")}<th title="Program-level / shared">Program-level</th></tr></thead><tbody>${overview}</tbody></table></div>`, "", true)}
     ${unownedTotal ? `
     <div class="filter-bar own-bar">
       <label class="small faint" style="display:flex;gap:5px;align-items:center;cursor:pointer"><input type="checkbox" data-own-all style="accent-color:var(--amber)"> select all</label>

@@ -56,7 +56,7 @@ const App = {
         case "defects":     html = seg[1] ? Views.defectDetail(seg[1]) : Views.defects(params); break;
         case "execute":     html = Views.execute(seg[1], params); nav = params.get("tr") ? "runs" : "cases"; break;
         case "sitrep":      html = Views.sitrep(); nav = "dashboard"; break;
-        case "documents":   html = Views.documents(params); break;
+        case "documents":   html = seg[1] ? Views.documentDetail(seg[1]) : Views.documents(params); break;
         case "schedule":    html = Views.schedule(params); break;
         case "events":      html = seg[1] ? Views.eventDetail(seg[1]) : Views.schedule(params); nav = "schedule"; break;
         case "interchange": html = Views.interchange(); break;
@@ -81,6 +81,18 @@ const App = {
     const sameRoute = location.hash === this._lastHash;
     const y = window.scrollY;
     view.innerHTML = scopeBanner() + html;
+    // Column priority: a col-lo / col-mid class on a header cell applies to every cell in
+    // that column, so wide tables drop low-priority columns on narrow screens. Rows whose
+    // cell count differs (group rows spanning the table) are left alone.
+    view.querySelectorAll("table.data").forEach(t => {
+      const ths = [...t.querySelectorAll("thead th")];
+      const prio = ths.map((th, i) => [i, (th.className.match(/\bcol-(?:lo|mid)\b/) || [])[0]]).filter(x => x[1]);
+      if (!prio.length) return;
+      t.querySelectorAll("tbody tr").forEach(tr => {
+        if (tr.children.length !== ths.length) return;
+        for (const [i, cls] of prio) tr.children[i].classList.add(cls);
+      });
+    });
     this.renderScopeBox();
     const target = this._anchor && document.getElementById(this._anchor);
     this._anchor = null;

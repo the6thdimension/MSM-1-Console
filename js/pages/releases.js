@@ -97,7 +97,7 @@ function buildRows(list, showRelease) {
     </tr>`;
   }).join("");
 }
-const buildHead = showRelease => `<thead><tr><th>Build</th><th>Version</th>${showRelease ? "<th>Release</th>" : ""}<th>Received</th><th>Status</th><th title="Active cases of the system with a result on this build">Cases run</th><th>Results on this build</th></tr></thead>`;
+const buildHead = showRelease => `<thead><tr><th>Build</th><th>Version</th>${showRelease ? `<th class="col-lo">Release</th>` : ""}<th class="col-mid">Received</th><th>Status</th><th class="col-lo" title="Active cases of the system with a result on this build">Cases run</th><th>Results on this build</th></tr></thead>`;
 
 function releaseRows(list) {
   return list.map(r => {
@@ -131,7 +131,7 @@ Views.releases = function () {
         <div class="rel-current">${s ? (cur ? `Current build ${buildChip(cur)}` : `<span class="faint">No builds yet</span>`) : ""}</div>
         <span class="inline-actions">${s ? actBtn("+ Build", "add-build", null, `data-sys="${s.id}"`) + actBtn("+ Release", "add-release", null, `data-sys="${s.id}"`) : ""}</span>
       </div>
-      ${myRels.length ? `<div class="table-scroll"><table class="data"><thead><tr><th>Release</th><th>Name</th><th>Status</th><th>Target</th><th>Latest build</th><th>Decision</th></tr></thead><tbody>${releaseRows(myRels)}</tbody></table></div>` : `<div class="cc-empty">No releases defined for this system.</div>`}
+      ${myRels.length ? `<div class="table-scroll"><table class="data"><thead><tr><th>Release</th><th>Name</th><th>Status</th><th class="col-mid">Target</th><th class="col-lo">Latest build</th><th class="col-lo">Decision</th></tr></thead><tbody>${releaseRows(myRels)}</tbody></table></div>` : `<div class="cc-empty">No releases defined for this system.</div>`}
       ${shown.length ? `<div class="table-scroll"><table class="data">${buildHead(true)}<tbody>${buildRows(shown, true)}</tbody></table></div>` : ""}
       ${myBuilds.length > shown.length ? `<div class="cc-empty">${myBuilds.length - shown.length} older build(s) — open a release to see all of its builds.</div>` : ""}
     </div>`;
@@ -292,7 +292,7 @@ Views.buildDetail = function (id, params) {
     ${buildComparePanel(b, params)}
     ${fixedHere.length ? panel("Defects Fixed In This Build", fixedHere.map(d => `<div style="margin-bottom:5px">${chip("defects", d)} ${badge(d.severity)} ${badge(d.status)}</div>`).join("")) : ""}
     ${panel("Results On This Build", rows
-      ? `<div class="table-scroll"><table class="data"><thead><tr><th>Case</th><th>Title</th><th>Component</th><th>Latest result here</th><th>Date</th><th>Operator</th><th>Measured</th></tr></thead><tbody>${rows}</tbody></table></div>`
+      ? `<div class="table-scroll"><table class="data"><thead><tr><th>Case</th><th>Title</th><th class="col-mid">Component</th><th>Latest result here</th><th class="col-lo">Date</th><th class="col-lo">Operator</th><th class="col-lo">Measured</th></tr></thead><tbody>${rows}</tbody></table></div>`
       : emptyMsg("No results recorded on this build yet."), "", true)}
     ${notRun.length ? panel(`Not Yet Run On ${b.label}`, chips("cases", notRun)) : ""}
     ${sessions.length ? testRunsPanel("Test Run Sessions On This Build", sessions, "") : ""}

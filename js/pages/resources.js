@@ -8,9 +8,9 @@ Views.resources = function () {
     return `<tr>
       <td>${codeLink("resources", r)}</td>
       <td><a href="#/resources/${r.id}">${esc(r.name)}</a><div class="faint small">${esc(r.description)}</div></td>
-      <td>${badge(r.type, "b-purple")}</td>
-      <td>${r.vvaRequired ? badge(r.verification) : `<span class="faint small">n/a</span>`}</td>
-      <td>${r.vvaRequired ? badge(r.validation) : `<span class="faint small">n/a</span>`}</td>
+      <td class="col-mid">${badge(r.type, "b-purple")}</td>
+      <td class="col-lo">${r.vvaRequired ? badge(r.verification) : `<span class="faint small">n/a</span>`}</td>
+      <td class="col-lo">${r.vvaRequired ? badge(r.validation) : `<span class="faint small">n/a</span>`}</td>
       <td>${r.vvaRequired ? badge(r.accreditation) : `<span class="faint small">n/a</span>`}</td>
       <td class="num">${cases.length}</td>
     </tr>`;
@@ -20,7 +20,7 @@ Views.resources = function () {
       actBtn("+ New Resource", "add-resource", null, "", false),
       "Models, simulations, HWIL rigs, referent datasets, and instrumentation. M&S assets carry Verification, Validation, and Accreditation state (DoDI 5000.61 / MIL-STD-3022); test cases that use unaccredited assets are flagged with a data-credibility caveat.")}
     ${panel("Register", rows
-      ? `<div class="table-scroll"><table class="data"><thead><tr><th>Code</th><th>Asset / Resource</th><th>Type</th><th>Verification</th><th>Validation</th><th>Accreditation</th><th>Cases</th></tr></thead><tbody>${rows}</tbody></table></div>`
+      ? `<div class="table-scroll"><table class="data"><thead><tr><th>Code</th><th>Asset / Resource</th><th class="col-mid">Type</th><th class="col-lo">Verification</th><th class="col-lo">Validation</th><th>Accreditation</th><th>Cases</th></tr></thead><tbody>${rows}</tbody></table></div>`
       : emptyMsg("No resources registered."), "", true)}`;
 };
 

@@ -249,7 +249,7 @@ h1.page-title {
 @media (max-width: 1100px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
 /* Grid columns may shrink below their content's width; wide tables scroll inside instead of
    pushing the page sideways. */
-.grid-2 > *, .grid-3 > * { min-width: 0; }
+.grid-2 > *, .grid-3 > *, .risk-layout > * { min-width: 0; }
 
 /* ---------- tables ---------- */
 table.data {
@@ -686,6 +686,7 @@ a.cd-tile:hover { border-color: var(--amber-dim); text-decoration: none; }
   color: var(--ink-dim);
 }
 a.ev-ref { color: var(--blue); }
+table.data td .ev-ref { max-width: 100%; overflow-wrap: anywhere; }
 
 /* ---------- report / print ---------- */
 .report-only { display: none; }
@@ -1580,6 +1581,7 @@ table.case-table .c-act { width: 52px; text-align: center; }
 /* Group header rows inside data tables (run log grouped by session or build). */
 table.data tr.group-row td { background: var(--bg-2); font-family: var(--disp); font-size: 13.5px; letter-spacing: .8px; text-transform: uppercase; color: var(--ink-dim); padding: 8px 12px 6px; }
 .run-measure { margin-bottom: 12px; }
+.doc-preview { margin: 0; white-space: pre-wrap; font-family: var(--mono); font-size: 12px; color: var(--ink-dim); max-height: 420px; overflow: auto; }
 .run-measure .margin-bar { margin-top: 6px; }
 
 /* Column priority for wide tables: col-lo drops first, col-mid next, so the columns that

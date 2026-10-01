@@ -70,7 +70,7 @@ Views.risks = function (params) {
         </div>
       </div>
       ${panel(selL ? `Risks at L${selL} × I${selI}` : "Register", rows
-        ? `<div class="table-scroll"><table class="data"><thead><tr><th>Code</th><th>Risk</th><th>Cat</th><th>L×I</th><th>Score</th><th>Trend</th><th>Status</th><th>Mits</th></tr></thead><tbody>${rows}</tbody></table></div>`
+        ? `<div class="table-scroll"><table class="data"><thead><tr><th>Code</th><th>Risk</th><th class="col-lo">Cat</th><th class="col-mid">L×I</th><th>Score</th><th class="col-lo">Trend</th><th>Status</th><th class="col-lo">Mits</th></tr></thead><tbody>${rows}</tbody></table></div>`
         : emptyMsg(selL ? "No risks in this cell." : "No open risks."), "", true)}
     </div>`;
 };

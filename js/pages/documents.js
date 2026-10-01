@@ -1,5 +1,5 @@
 /* ============================================================
-   Document library.
+   Document library and document pages.
    Page module: adds to Views and Actions; loaded after js/views.js.
    ============================================================ */
 const DOC_TYPES = ["Test Plan", "Report", "V&V Artifact", "Evidence", "Reference", "Memo", "Other"];
@@ -28,20 +28,13 @@ Views.documents = function (params) {
   if (typeF) docs = docs.filter(d => d.docType === typeF);
 
   const rows = docs.map(d => {
-    const attach = d.dataUrl
-      ? `${actBtn("⇓ " + esc(d.fileName || "file"), "doc-download", d.id, "", true)} <span class="faint mono small">${fmtBytes(d.fileSize)}</span>`
-      : d.url
-        ? (/^https?:\/\//i.test(d.url)
-            ? `<a class="ev-ref" href="${esc(d.url)}" target="_blank" rel="noopener">↗ ${esc(d.url.replace(/^https?:\/\//i, "").slice(0, 44))}</a>`
-            : `<span class="ev-ref" title="${esc(d.url)}">${esc(d.url.slice(0, 44))}</span>`)
-        : `<span class="faint small">no attachment</span>`;
     return `<tr>
-      <td><span class="code">${esc(d.code)}</span></td>
-      <td><b>${esc(d.title)}</b>${d.description ? `<div class="faint small">${esc(d.description)}</div>` : ""}</td>
-      <td>${badge(d.docType, "b-purple")}</td>
-      <td>${attach}</td>
-      <td>${relatedChips(d.relatedCodes)}</td>
-      <td class="num">${esc(d.added || "")}</td>
+      <td>${codeLink("documents", d)}</td>
+      <td><a href="#/documents/${d.id}"><b>${esc(d.title)}</b></a>${d.description ? `<div class="faint small">${esc(d.description)}</div>` : ""}</td>
+      <td class="col-mid">${badge(d.docType, "b-purple")}</td>
+      <td>${attachmentCell(d)}</td>
+      <td class="col-lo">${relatedChips(d.relatedCodes)}</td>
+      <td class="num col-lo">${esc(d.added || "")}</td>
       <td class="inline-actions">${actBtn("Edit", "edit-doc", d.id)}${actBtn("Del", "del-doc", d.id)}</td>
     </tr>`;
   }).join("");
@@ -56,9 +49,50 @@ Views.documents = function (params) {
       <span class="faint mono small">${docs.length} shown · active database ≈ ${fmtBytes(bytes)} characters; recovery copy also uses browser storage</span>
     </div>
     ${panel("Library", rows
-      ? `<div class="table-scroll"><table class="data"><thead><tr><th>Code</th><th>Document</th><th>Type</th><th>Attachment</th><th>Related</th><th>Added</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+      ? `<div class="table-scroll"><table class="data"><thead><tr><th>Code</th><th>Document</th><th class="col-mid">Type</th><th>Attachment</th><th class="col-lo">Related</th><th class="col-lo">Added</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
       : emptyMsg("No documents yet — link one or upload a file."), "", true)}
     <input type="file" id="doc-file" hidden>`;
+};
+
+/* Download button for an embedded file, a link for a web address, or the share path as text. */
+function attachmentCell(d) {
+  if (d.dataUrl) return `${actBtn("⇓ " + esc(d.fileName || "file"), "doc-download", d.id, "", true)} <span class="faint mono small">${fmtBytes(d.fileSize)}</span>`;
+  if (d.url) return safeHttp(d.url)
+    ? externalLink(d.url, "↗ " + d.url.replace(/^https?:\/\//i, "").slice(0, 44))
+    : `<span class="ev-ref" title="${esc(d.url)}">${esc(d.url.slice(0, 44))}</span>`;
+  return `<span class="faint small">no attachment</span>`;
+}
+
+/* The text of an embedded plain-text file, for a preview. null for other types. */
+function embeddedText(d) {
+  if (!d.dataUrl || !/^text\//.test(d.fileType || "")) return null;
+  const m = d.dataUrl.match(/^data:[^,]*;base64,([A-Za-z0-9+/]*={0,2})$/);
+  if (!m) return null;
+  try { return new TextDecoder().decode(Uint8Array.from(atob(m[1]), c => c.charCodeAt(0))); } catch (_) { return null; }
+}
+
+Views.documentDetail = function (id) {
+  const d = Store.get("documents", id);
+  if (!d) return notFound("Document");
+  const sysId = Store.ownerOf("documents", d), sys = sysId ? Store.get("systems", sysId) : null;
+  const text = embeddedText(d);
+  const pathNote = d.url && !safeHttp(d.url) ? `<div class="faint small" style="margin-top:6px">A file path on your share — open it from your own file browser; the console does not reach outside this browser.</div>` : "";
+  return `
+    ${pageHead([{ label: "Documents", href: "#/documents" }, { label: d.code }],
+      `<span class="code-inline">${esc(d.code)}</span>${esc(d.title)}`,
+      actBtn("Edit", "edit-doc", d.id) + actBtn("Delete", "del-doc", d.id) + (d.dataUrl ? actBtn("⇓ Download", "doc-download", d.id, "", false) : ""),
+      `${badge(d.docType, "b-purple")} ${sys ? chip("systems", sys) : `<span class="faint small">program-level</span>`} <span class="faint mono small">added ${esc(d.added || "—")}</span>`)}
+    <div class="grid-2">
+      <div>
+        ${panel("Attachment", `${attachmentCell(d)}${d.dataUrl ? `<div class="faint small" style="margin-top:6px">Embedded in this browser's database · ${esc(d.fileType || "unknown type")}</div>` : ""}${pathNote}`)}
+        ${d.description ? panel("Description", `<p style="margin:0;white-space:pre-wrap">${esc(d.description)}</p>`) : ""}
+        ${panel("Related Records", relatedChips(d.relatedCodes))}
+      </div>
+      <div>
+        ${text != null ? panel(`Preview — ${d.fileName || "file"}`, `<pre class="doc-preview">${esc(text.slice(0, 8000))}${text.length > 8000 ? "\n…" : ""}</pre>`) : ""}
+        ${auditPanel(d.id)}
+      </div>
+    </div>`;
 };
 
 function docFields(fileNote) {
@@ -112,7 +146,7 @@ Object.assign(Actions, {
   "del-doc": id => {
     const d = Store.get("documents", id);
     Modal.confirm(`Delete ${d.code} “${d.title}”${d.dataUrl ? " and its embedded file" : ""}?`, () => {
-      Store.remove("documents", id); toastUndo("Document deleted"); App.render();
+      Store.remove("documents", id); toastUndo("Document deleted"); App.go("#/documents");
     });
   },
   "doc-download": id => {

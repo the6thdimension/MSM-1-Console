@@ -252,7 +252,7 @@ Views.caseDetail = function (id) {
       <div>
         ${removalPanel(tc)}
         ${panel("Run History", runRows
-          ? `<div class="table-scroll"><table class="data"><thead><tr><th>Run</th><th>Date</th><th>Result</th><th>Build</th><th>Measured</th><th>Operator</th><th>Plan / Test Run</th><th>Notes / Evidence</th><th></th></tr></thead><tbody>${runRows}</tbody></table></div>`
+          ? `<div class="table-scroll"><table class="data"><thead><tr><th>Run</th><th>Date</th><th>Result</th><th class="col-mid">Build</th><th class="col-lo">Measured</th><th class="col-lo">Operator</th><th class="col-lo">Plan / Test Run</th><th class="col-mid">Notes / Evidence</th><th></th></tr></thead><tbody>${runRows}</tbody></table></div>`
           : emptyMsg("Never executed. Record the first run."), "", true)}
       </div>
     </div>

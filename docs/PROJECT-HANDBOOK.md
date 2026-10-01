@@ -164,7 +164,7 @@ Compatibility must retain both forms and validate counters against actual record
 | `#/resources` | Model/simulation/rig/referent register and VV&A tracks, intended use and caveats |
 | `#/idsk`, `#/decisions/:id` | Decisions, informing requirements and plans, evidence readiness |
 | `#/schedule?zoom=`, `#/events/:id` | Campaign Overview: a Program row for events not tied to a plan, then one row per plan (name and status at left, labeled bar for its window). Shape encodes event type (● event, ▲ milestone, ◆ decision point), a thin bar marks a multi-day event, green fill = complete, faded = cancelled; milestones and decision points carry visible labels. Zoom: whole program (default), ±90 days around today, or this calendar quarter; bars cut by the window get a dashed edge and items outside are counted. All positions come from one UTC-day scale (`ganttScale`). The Program row (events not tied to a plan) is always the first row, above the test-plan rows. Below the chart the dated list has two sections: **Upcoming** (any event whose last day is today or later, plus undated ones; soonest first; events already running are marked "happening now") and **Past** underneath (most recent first; a past event still Planned or In Progress is flagged "past due — update status") |
-| `#/documents` | External references and embedded files, related-code links |
+| `#/documents`, `#/documents/:id` | External references and embedded files, related-code links. Each document has a page: attachment (download, web link, or a share path shown as text with a note that it opens from your own file browser), description, related records, a preview of embedded plain-text files, change log |
 | `#/interchange` | CSV conversions, full JSON transfer, Jira URL setting, blank program (always whole-program, regardless of scope) |
 | `#/ownership` | Ownership overview per system; program-level records with reviewed owner suggestions; assign selected or accept suggestions |
 | `#/releases`, `#/releases/:id`, `#/builds/:id` | Per system: current build, releases (status, target, latest build, decision, Jira Fix Version) and the build stream with how many active cases have a result on each build. A **release page is its readiness view**: release candidate, cases run on it (pass/fail), results carried forward from older builds, never-run cases, a per-case table, requirement rollup with the requirements verified only by older-build results, release exit criteria, open defects of the system with their builds, and the margin between the target date and the linked decision. A build page shows results on that build, a **comparison with another build** (default: the previous non-rejected one; `?vs=` picks another) listing regressed, fixed, still failing, not re-run and new cases, defects fixed in it, what has not been run on it yet, change notes, sessions run against it, and links to the newer and older builds. System pages carry a Releases & Builds panel; system cards show the current build |
@@ -245,6 +245,13 @@ Compatibility must retain both forms and validate counters against actual record
   recorded" once the system has builds; nothing is shown for systems without builds,
   and old results are never assigned a build automatically. Deleting a build keeps its
   results (they lose only the build link); deleting a release keeps its builds.
+- Narrow screens: tables mark low-priority columns on their header cells with
+  `col-lo` (hidden below a 1250 px window) or `col-mid` (hidden below 1000 px);
+  `App.render` copies the class to every cell in that column, skipping rows that span
+  the table. Identifying, result and status columns are never marked. Grid columns may
+  shrink below their content (`min-width: 0`), so wide tables scroll inside their panel
+  rather than pushing the page sideways. The Ownership overview lists record types as
+  rows and systems as columns.
 - Case specification (`Store.caseSpec`): five advisory checks — objective, expected
   results, pass/fail criteria, procedure, and at least one verified requirement.
   Nothing is blocked; the case page and the record form show what is missing.

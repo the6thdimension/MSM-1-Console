@@ -20,7 +20,7 @@ Views.plans = function () {
       actBtn("+ New Plan", "add-plan", null, "", false),
       "Plans bundle test cases into scheduled campaigns. Progress reflects each case's latest run result.")}
     ${panel("Campaigns", rows
-      ? `<div class="table-scroll"><table class="data"><thead><tr><th>Code</th><th>Plan</th><th>Phase</th><th>Status</th><th>Window</th><th>Cases</th><th>Progress</th></tr></thead><tbody>${rows}</tbody></table></div>`
+      ? `<div class="table-scroll"><table class="data"><thead><tr><th>Code</th><th>Plan</th><th class="col-lo">Phase</th><th>Status</th><th class="col-mid">Window</th><th class="col-lo">Cases</th><th>Progress</th></tr></thead><tbody>${rows}</tbody></table></div>`
       : emptyMsg("No test plans."), "", true)}`;
 };
 
@@ -74,7 +74,7 @@ Views.planDetail = function (id) {
       ${panel("Phase Exit Criteria", renderCritList(exit), actBtn("+ Add", "add-crit-exit", p.id, `data-parent="plan"`), true)}
     </div>
     ${panel("Assigned Test Cases", rows
-      ? `<div class="table-scroll"><table class="data"><thead><tr><th>Code</th><th>Title</th><th>Component</th><th>Procedure</th><th>Status</th><th>Latest Run</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+      ? `<div class="table-scroll"><table class="data"><thead><tr><th>Code</th><th>Title</th><th class="col-mid">Component</th><th class="col-lo">Procedure</th><th>Status</th><th>Latest Run</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
       : emptyMsg("No test cases assigned. Use “+ Assign Cases”."), "", true)}
     ${testRunsPanel("Test Runs from This Plan", Store.testRunsSorted(t => t.planId === p.id), "No test runs yet — use ▶ Start Run.")}
     ${auditPanel(p.id)}
