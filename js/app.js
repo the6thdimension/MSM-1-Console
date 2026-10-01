@@ -60,6 +60,7 @@ const App = {
         case "schedule":    html = Views.schedule(params); break;
         case "events":      html = seg[1] ? Views.eventDetail(seg[1]) : Views.schedule(params); nav = "schedule"; break;
         case "interchange": html = Views.interchange(); break;
+        case "ownership":   html = Views.ownership(params); break;
         case "search":      html = Views.searchResults(decodeURIComponent(seg.slice(1).join("/") || params.get("q") || "")); nav = ""; break;
         default:            html = Views.dashboard(); nav = "dashboard";
       }
@@ -72,7 +73,8 @@ const App = {
     // navigating to a new route starts at the top unless an anchor was requested.
     const sameRoute = location.hash === this._lastHash;
     const y = window.scrollY;
-    view.innerHTML = html;
+    view.innerHTML = scopeBanner() + html;
+    this.renderScopeBox();
     const target = this._anchor && document.getElementById(this._anchor);
     this._anchor = null;
     this._lastHash = location.hash;
@@ -107,8 +109,21 @@ const App = {
   refreshNavCounts() {
     document.querySelectorAll(".nav-count").forEach(el => {
       const coll = el.dataset.count;
-      el.textContent = Store.all(coll).length;
+      el.textContent = Scope.list(coll).length;
     });
+  },
+
+  /* Sidebar scope switcher; rebuilt each render because systems can be added or renamed. */
+  renderScopeBox() {
+    const sel = document.getElementById("scope-select"), shared = document.getElementById("scope-shared");
+    if (!sel) return;
+    Scope.validate();
+    sel.innerHTML = `<option value="">◈ Program — all systems</option>` +
+      Store.all("systems").slice().sort(Store.byCodeOrder).map(s => `<option value="${s.id}">${esc(s.code)} ${esc(s.name)}</option>`).join("");
+    sel.value = Scope.system;
+    shared.checked = Scope.shared;
+    shared.disabled = !Scope.system;
+    document.getElementById("sidebar").classList.toggle("scoped", !!Scope.system);
   },
 
   bind() {
@@ -126,6 +141,9 @@ const App = {
 
     document.body.addEventListener("change", e => {
       const t = e.target;
+      if (t.id === "scope-select") { Scope.set(t.value); this.render(); return; }
+      if (t.id === "scope-shared") { Scope.set(Scope.system, t.checked); this.render(); return; }
+      if (t.matches("[data-own-all]")) { document.querySelectorAll("[data-own]").forEach(cb => { cb.checked = t.checked; }); return; }
       if (t.matches("[data-bulk]")) {
         t.checked ? this.bulkSel.add(t.dataset.bulk) : this.bulkSel.delete(t.dataset.bulk);
         this.updateBulkBar();
@@ -258,6 +276,7 @@ const App = {
   boot() {
     Commands.install();
     try { Store.load(); } catch (err) { this.recovery(err); return; }
+    Scope.load();
     this.bind();
     if (!location.hash) location.hash = "#/dashboard";
     this.render();

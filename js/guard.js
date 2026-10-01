@@ -7,13 +7,16 @@ const DataGuard = {
     procedures: ['steps'], plans: ['caseIds', 'extLinks'], risks: ['relatedRequirementIds', 'relatedCaseIds', 'mitigations'],
     decisions: ['requirementIds'], events: ['notes'], defects: ['caseIds'], testRuns: ['caseIds']
   },
+  // systemId on owned collections = owning system ('' = program-level / shared).
   refs: {
-    components: { systemId: 'systems', parentComponentId: 'components' }, requirements: { componentIds: 'components' },
+    components: { systemId: 'systems', parentComponentId: 'components' }, requirements: { componentIds: 'components', systemId: 'systems' },
     cases: { componentId: 'components', systemId: 'systems', procedureId: 'procedures', requirementIds: 'requirements', resourceIds: 'resources' },
-    plans: { caseIds: 'cases', decisionId: 'decisions', regressionSystemId: 'systems' }, runs: { caseId: 'cases', planId: 'plans', testRunId: 'testRuns' },
-    defects: { componentId: 'components', caseIds: 'cases', runId: 'runs' },
-    risks: { relatedRequirementIds: 'requirements', relatedCaseIds: 'cases' },
-    decisions: { requirementIds: 'requirements' }, events: { planId: 'plans', decisionId: 'decisions' },
+    procedures: { systemId: 'systems' },
+    plans: { caseIds: 'cases', decisionId: 'decisions', regressionSystemId: 'systems', systemId: 'systems' }, runs: { caseId: 'cases', planId: 'plans', testRunId: 'testRuns' },
+    defects: { componentId: 'components', caseIds: 'cases', runId: 'runs', systemId: 'systems' },
+    risks: { relatedRequirementIds: 'requirements', relatedCaseIds: 'cases', systemId: 'systems' },
+    decisions: { requirementIds: 'requirements', systemId: 'systems' }, events: { planId: 'plans', decisionId: 'decisions', systemId: 'systems' },
+    documents: { systemId: 'systems' }, resources: { systemId: 'systems' },
     testRuns: { planId: 'plans', systemId: 'systems', componentId: 'components', caseIds: 'cases' }
   },
   enums: {
@@ -128,20 +131,20 @@ const DataGuard = {
         codes.add(r.code);
       }
     };
-    const strings = ['code','name','title','description','text','objective','threshold','measure','method','type','priority','status','phase','date','start','end','operator','result','measured','evidence','notes','extKey','venue','testType','owner','authority','intendedUse','accDate','accScope','opened','closed','category','docType','url','fileName','fileType','dataUrl','relatedCodes','added','decision','reviewDisposition','preconditions','testData','expectedResults','passFailCriteria','createdAt','startedAt','completedAt'];
+    const strings = ['code','name','title','description','text','objective','threshold','measure','method','type','priority','status','phase','date','start','end','operator','result','measured','evidence','notes','extKey','venue','testType','owner','authority','intendedUse','accDate','accScope','opened','closed','category','docType','url','fileName','fileType','dataUrl','relatedCodes','added','decision','reviewDisposition','preconditions','testData','expectedResults','passFailCriteria','createdAt','startedAt','completedAt','team','lead'];
     const known = {
-      systems:'name description', components:'systemId parentComponentId name description',
-      requirements:'title text type priority method measure threshold objective extKey',
-      procedures:'title description', criteria:'parentType parentId procedureId kind text status',
+      systems:'name description team lead', components:'systemId parentComponentId name description',
+      requirements:'title text type priority method measure threshold objective extKey systemId',
+      procedures:'title description systemId', criteria:'parentType parentId procedureId kind text status',
       cases:'componentId systemId title objective procedureId priority status venue testType extKey reviewDisposition preconditions testData expectedResults passFailCriteria',
-      plans:'name description phase status start end decisionId decision extKey regressionSystemId',
+      plans:'name description phase status start end decisionId decision extKey regressionSystemId systemId',
       runs:'caseId planId testRunId date operator result measured evidence notes extKey recordedAt',
       testRuns:'name operator status notes planId systemId componentId createdAt startedAt completedAt',
-      defects:'title description severity status componentId runId owner opened closed',
-      risks:'title description category status owner likelihood impact initialLikelihood initialImpact residualLikelihood residualImpact',
-      resources:'name type description vvaRequired intendedUse owner authority verification validation accreditation accDate accScope artifacts',
-      decisions:'title description status date authority', events:'title description type status start end location planId decisionId',
-      documents:'title docType description url fileName fileSize fileType dataUrl relatedCodes added'
+      defects:'title description severity status componentId runId owner opened closed systemId',
+      risks:'title description category status owner likelihood impact initialLikelihood initialImpact residualLikelihood residualImpact systemId',
+      resources:'name type description vvaRequired intendedUse owner authority verification validation accreditation accDate accScope artifacts systemId',
+      decisions:'title description status date authority systemId', events:'title description type status start end location planId decisionId systemId',
+      documents:'title docType description url fileName fileSize fileType dataUrl relatedCodes added systemId'
     };
     const dates = ['date','start','end','accDate','opened','closed','added'];
     const checkDate = (value,path) => {

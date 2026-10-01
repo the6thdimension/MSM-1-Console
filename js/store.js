@@ -322,7 +322,8 @@ const Store = {
       db.cases = db.cases.filter(tc => !(tc.systemId === id && !tc.componentId));
       db.cases.forEach(tc => { if (tc.systemId === id) tc.systemId = ""; });
       db.plans.forEach(p => { if (p.regressionSystemId === id) p.regressionSystemId = ""; });
-      (db.testRuns || []).forEach(t => { if (t.systemId === id) t.systemId = ""; });
+      // Records the system owned are not deleted with it; they become program-level.
+      for (const c of this.OWNED) (db[c] || []).forEach(r => { if (r.systemId === id) r.systemId = ""; });
     }
     if (coll === "components") {
       db.cases.filter(tc => tc.componentId === id).forEach(tc => this.cleanupRefs("cases", tc.id, tc));
@@ -387,6 +388,44 @@ const Store = {
     return comp ? comp.systemId : (tc.systemId || "");
   },
 
+  /* ---------- system ownership ----------
+     The system a record belongs to, or "" for program-level / shared. Structural
+     records derive it (component → its system, case → its component's system,
+     run → its case, criterion → its parent); the rest carry an explicit systemId. */
+  OWNED: ["requirements", "procedures", "plans", "testRuns", "risks", "defects", "decisions", "events", "documents", "resources"],
+  ownerOf(coll, r) {
+    if (!r) return "";
+    switch (coll) {
+      case "systems": return r.id;
+      case "components": return r.systemId || "";
+      case "cases": return this.caseSystemId(r);
+      case "runs": { const tc = this.get("cases", r.caseId); return tc ? this.caseSystemId(tc) : ""; }
+      case "criteria": { const pc = r.parentType === "plan" ? "plans" : "procedures"; return this.ownerOf(pc, this.get(pc, r.parentId)); }
+      case "defects": { if (r.systemId) return r.systemId; const c = this.get("components", r.componentId); return c ? c.systemId : ""; }
+      case "plans": return r.systemId || r.regressionSystemId || "";
+      default: return r.systemId || "";
+    }
+  },
+  /* A suggested owner for a program-level record, only when its links point to exactly one system. */
+  suggestOwner(coll, r) {
+    const caseSys = ids => (ids || []).map(id => this.get("cases", id)).filter(Boolean).map(tc => this.caseSystemId(tc));
+    const owners = (c, ids) => (ids || []).map(id => this.ownerOf(c, this.get(c, id)));
+    let basis = [], why = "";
+    switch (coll) {
+      case "requirements": basis = (r.componentIds || []).map(id => (this.get("components", id) || {}).systemId).concat(this.casesOfRequirement(r.id).map(tc => this.caseSystemId(tc))); why = "traced components and verifying cases"; break;
+      case "procedures": basis = this.casesOfProcedure(r.id).map(tc => this.caseSystemId(tc)); why = "test cases using it"; break;
+      case "plans": case "testRuns": basis = caseSys(r.caseIds); why = "assigned test cases"; break;
+      case "risks": basis = caseSys(r.relatedCaseIds).concat(owners("requirements", r.relatedRequirementIds)); why = "related cases and requirements"; break;
+      case "defects": basis = caseSys(r.caseIds).concat(r.runId ? [this.ownerOf("runs", this.get("runs", r.runId))] : []); why = "affected cases and discovery run"; break;
+      case "decisions": basis = owners("requirements", r.requirementIds).concat(this.plansOfDecision(r.id).map(p => this.ownerOf("plans", p))); why = "informing measures and supporting plans"; break;
+      case "events": basis = [r.planId && this.ownerOf("plans", this.get("plans", r.planId)), r.decisionId && this.ownerOf("decisions", this.get("decisions", r.decisionId))]; why = "linked plan and decision"; break;
+      case "documents": basis = String(r.relatedCodes || "").split(/[,\s]+/).filter(Boolean).map(c => { const hit = this.byCode(c.toUpperCase()); return hit ? this.ownerOf(hit.coll, hit.entity) : ""; }); why = "related codes"; break;
+      case "resources": basis = this.casesOfResource(r.id).map(tc => this.caseSystemId(tc)); why = "test cases using it"; break;
+    }
+    const set = new Set(basis.filter(Boolean));
+    return set.size === 1 ? { systemId: [...set][0], why } : null;
+  },
+
   /* ---------- component hierarchy (parentComponentId) ---------- */
   byCodeOrder(a, b) { return String(a.code || a.id).localeCompare(String(b.code || b.id), "en", { numeric: true }); },
   /* A component whose parent is missing or lives in another system is treated as a root. */
@@ -404,6 +443,8 @@ const Store = {
     return out;
   },
   componentDepth(compId) { return this.ancestorIds(compId).length; },
+  /* Cases owned by a component or any of its subcomponents. */
+  casesOfBranch(compId) { const ids = this.descendantIds(compId); return this.all("cases").filter(tc => ids.has(tc.componentId)); },
   descendantIds(compId) {
     const out = new Set([compId]);
     for (const id of out) for (const ch of this.childrenOf(id)) out.add(ch.id);
@@ -433,12 +474,14 @@ const Store = {
   testRunResult(testRunId, caseId) {
     return this.runsOf(caseId).find(r => r.testRunId === testRunId) || null;
   },
-  /* The earlier test run to compare against: latest earlier run of the same plan,
-     otherwise the latest earlier run of the same system. */
+  /* The earlier test run to compare against: the latest earlier run of the same plan,
+     else of the same component scope, else of the same system. */
   previousTestRun(t) {
     const mine = this.testRunTime(t);
     const earlier = key => this.testRunsSorted(x => x.id !== t.id && key(x) && this.testRunTime(x) < mine)[0] || null;
-    return (t.planId && earlier(x => x.planId === t.planId)) || (t.systemId && earlier(x => x.systemId === t.systemId)) || null;
+    return (t.planId && earlier(x => x.planId === t.planId)) ||
+      (t.componentId && earlier(x => x.componentId === t.componentId)) ||
+      (t.systemId && earlier(x => x.systemId === t.systemId)) || null;
   },
   criteriaOf(parentId, kind) {
     return this.all("criteria").filter(c => c.parentId === parentId && (!kind || c.kind === kind));

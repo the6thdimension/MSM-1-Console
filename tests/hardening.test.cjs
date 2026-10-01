@@ -16,8 +16,8 @@ function harness(memory=new Map(),fail=()=>false) {
     navigator:{locks:{request:(_key,fn)=>{const pending=queue.then(fn);queue=pending.catch(()=>{});return pending;}}},
     localStorage:{getItem(k){if(fail('get',k))throw Error('read denied');return memory.get(k)??null;},setItem(k,v){if(fail('set',k))throw Error('quota exceeded');memory.set(k,v);writes.push(k);},removeItem(k){memory.delete(k);}}
   });
-  for(const name of ['seed','guard','store','io','ui','views','regression'])vm.runInContext(fs.readFileSync(path.join(root,'js',name+'.js'),'utf8'),ctx,{filename:name});
-  const api=vm.runInContext('({Store,DataGuard,IO,Views,safeHttp,externalLink})',ctx);
+  for(const name of ['seed','guard','store','io','ui','views','regression','scope'])vm.runInContext(fs.readFileSync(path.join(root,'js',name+'.js'),'utf8'),ctx,{filename:name});
+  const api=vm.runInContext('({Store,DataGuard,IO,Views,Scope,safeHttp,externalLink})',ctx);
   return {...api,ctx,memory,writes,load:()=>api.Store.load()};
 }
 async function ready(fail=()=>false) {const h=harness(new Map([[KEY,JSON.stringify(fixture())]]),fail);h.load();return h;}
@@ -230,6 +230,49 @@ test('test run sessions keep results as runs, freeze scope and compare with the 
   await h.Store.command('del case',()=>h.Store.remove('cases','tc-1'));assert.deepEqual(copy(h.Store.get('testRuns',b.id).caseIds),['tc-2']);
   await h.Store.command('del run',()=>h.Store.remove('testRuns',a.id));
   const kept=h.Store.all('runs').find(r=>r.caseId==='tc-2'&&r.date==='2026-10-01');assert.ok(kept);assert.equal(kept.testRunId,'');h.DataGuard.validate(h.Store.db);
+});
+test('cases page renders component cards in tree order and component tests scope the whole branch',async()=>{
+  const h=await ready(),d=forkShaped();
+  d.cases.push({...d.cases.find(c=>c.id==='tc-3'),id:'tc-deep',code:'TC-950',componentId:'cmp-sub-b',title:'Synthetic deep case',removalNominated:false});
+  await h.Store.command('import',()=>h.Store.importJSON(JSON.stringify(d)));
+  const html=h.Views.cases(new URLSearchParams());
+  const order=[...html.matchAll(/case-card (top|sub|syslevel)" style="--depth:(\d)"/g)].map(m=>m[1]+m[2]);
+  assert.ok(order.includes('sub1')&&order.includes('sub2')&&order.includes('syslevel0'),'subcomponent and system-level cards present');
+  const iParent=html.indexOf('>CMP-05<'),iChild=html.indexOf('>CMP-90<'),iGrand=html.indexOf('>CMP-91<');
+  assert.ok(iParent>0&&iParent<iChild&&iChild<iGrand,'parent, child, grandchild in tree order');
+  assert.match(html,/Subcomponent · level 2/);
+  assert.match(h.Views.cases(new URLSearchParams('view=table')),/<th>Component<\/th>/);
+  const filtered=h.Views.cases(new URLSearchParams('component=cmp-sub-a'));
+  assert.doesNotMatch(filtered,/>CMP-06</);assert.match(filtered,/>CMP-91</);
+  assert.deepEqual(copy(h.Store.casesOfBranch('cmp-5').map(c=>c.id).sort()),['tc-14','tc-3','tc-deep']);
+  let t;await h.Store.command('component test',()=>{t=h.Store.add('testRuns',{name:'c',status:'Active',planId:'',systemId:'sys-2',componentId:'cmp-sub-a',createdAt:'2026-10-01T00:00:00.000Z',startedAt:'2026-10-01T00:00:00.000Z',completedAt:'',notes:'',operator:'',caseIds:['tc-deep']});});
+  assert.match(h.Views.componentDetail('cmp-5'),/Component Test Scope/);assert.match(h.Views.componentDetail('cmp-5'),new RegExp(t.code),'parent lists subcomponent tests');
+});
+test('system scope filters lists by owner without changing computed status',async()=>{
+  const h=await ready(),S=h.Store,Sc=h.Scope;
+  // Derived ownership follows structure; explicit ownership uses systemId.
+  assert.equal(S.ownerOf('cases',S.get('cases','tc-1')),'sys-3');
+  assert.equal(S.ownerOf('runs',S.get('runs','run-7')),'sys-3');
+  assert.equal(S.ownerOf('criteria',S.get('criteria','cri-1')),'');
+  assert.equal(S.ownerOf('defects',S.get('defects','def-2')),'sys-1','defect follows its component');
+  assert.equal(S.ownerOf('requirements',S.get('requirements','req-1')),'','unassigned fixture records are program-level');
+  assert.deepEqual(copy(S.suggestOwner('requirements',S.get('requirements','req-1'))),{systemId:'sys-3',why:'traced components and verifying cases'});
+  const statuses=()=>S.all('requirements').map(r=>S.reqStatus(r.id)).join();
+  const before=statuses();
+  await S.command('assign',()=>{S.update('requirements','req-1',{systemId:'sys-3'});S.update('requirements','req-2',{systemId:'sys-2'});});
+  Sc.system='sys-3';Sc.shared=false;
+  assert.deepEqual(copy(Sc.list('requirements').map(r=>r.id)),['req-1']);
+  assert.ok(Sc.list('cases').every(tc=>S.caseSystemId(tc)==='sys-3'));
+  assert.deepEqual(copy(Sc.list('systems').map(s=>s.id)),['sys-3']);
+  Sc.shared=true;
+  assert.ok(Sc.list('requirements').some(r=>r.id==='req-3'),'program-level items shown when shared');
+  assert.ok(!Sc.list('requirements').some(r=>r.id==='req-2'),'other systems never shown');
+  assert.equal(statuses(),before,'scope never changes computed status');
+  for(const p of ['dashboard','systems','requirements','cases','trace','procedures','plans','runs','risks','documents','sitrep','defects','idsk','schedule','resources','interchange','ownership'])assert.equal(typeof h.Views[p](new URLSearchParams()),'string');
+  assert.match(h.Views.caseDetail('tc-3'),/xsys/,'cross-system links are marked');
+  Sc.system='';
+  await S.command('delete system',()=>S.remove('systems','sys-2'));
+  assert.equal(S.get('requirements','req-2').systemId,'','owned records become program-level, not deleted');h.DataGuard.validate(S.db);
 });
 test('runtime shell has no remote assets and disallows background connections',()=>{
   const html=fs.readFileSync(path.join(root,'index.html'),'utf8');assert.doesNotMatch(html,/(?:src|href)="https?:/);assert.match(html,/connect-src 'none'/);

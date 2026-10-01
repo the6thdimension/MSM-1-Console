@@ -14,9 +14,9 @@ const SEED_DB = {
   },
 
   systems: [
-    { id: "sys-1", code: "SYS-01", name: "Simulation Core", description: "Real-time 3D simulation engine: physics, terrain/environment, scenario control, and rendering for the virtual proving ground." },
-    { id: "sys-2", code: "SYS-02", name: "Vehicle & Payload Models", description: "High-fidelity models of the MSM-1 truck and laser payload: dynamics, powertrain/APU, effector, and thermal behavior." },
-    { id: "sys-3", code: "SYS-03", name: "HWIL Integration", description: "Hardware-in-the-loop layer coupling the real truck hardware to the simulation: bus bridging, time sync, operator station, and safety chain." }
+    { id: "sys-1", code: "SYS-01", name: "Simulation Core", team: "Sim Core IPT", lead: "A. Chen", description: "Real-time 3D simulation engine: physics, terrain/environment, scenario control, and rendering for the virtual proving ground." },
+    { id: "sys-2", code: "SYS-02", name: "Vehicle & Payload Models", team: "Vehicle Model IPT", lead: "M. Reyes", description: "High-fidelity models of the MSM-1 truck and laser payload: dynamics, powertrain/APU, effector, and thermal behavior." },
+    { id: "sys-3", code: "SYS-03", name: "HWIL Integration", team: "HWIL Integration Team", lead: "J. Novak", description: "Hardware-in-the-loop layer coupling the real truck hardware to the simulation: bus bridging, time sync, operator station, and safety chain." }
   ],
 
   components: [
@@ -40,18 +40,18 @@ const SEED_DB = {
 
   /* measure: None | KPP | KSA | CTP | TPM | MOP | MOE | Spec */
   requirements: [
-    { id: "req-1",  code: "REQ-001", title: "End-to-end HWIL latency",    text: "The HWIL loop (hardware input → simulation response → hardware output) shall exhibit end-to-end latency ≤ 20 ms.", type: "Performance", priority: "Critical", method: "Test", measure: "CTP", threshold: "≤ 20 ms", objective: "≤ 10 ms", extKey: "MSM-101", componentIds: ["cmp-9", "cmp-10"] },
-    { id: "req-2",  code: "REQ-002", title: "Vehicle dynamics fidelity",  text: "Vehicle dynamics model outputs shall match reference truck telemetry within 5% RMS error across the standard maneuver set.", type: "Performance", priority: "Critical", method: "Analysis", measure: "CTP", threshold: "≤ 5% RMS", objective: "≤ 3% RMS", extKey: "MSM-102", componentIds: ["cmp-5", "cmp-1"] },
-    { id: "req-3",  code: "REQ-003", title: "Render frame rate",          text: "The visual system shall sustain ≥ 60 FPS at full scene density on the reference hardware configuration.", type: "Performance", priority: "High", method: "Test", measure: "TPM", threshold: "≥ 60 FPS", objective: "≥ 90 FPS", componentIds: ["cmp-4"] },
-    { id: "req-4",  code: "REQ-004", title: "Bus message coverage",       text: "The hardware interface shall emulate 100% of the reference truck's operational CAN/J1939 message set.", type: "Interface", priority: "High", method: "Inspection", measure: "MOP", threshold: "100% of message set", objective: "", componentIds: ["cmp-9"] },
-    { id: "req-5",  code: "REQ-005", title: "Powertrain model accuracy",  text: "Powertrain model torque and fuel-burn curves shall match dynamometer reference data within 3%.", type: "Performance", priority: "High", method: "Analysis", measure: "TPM", threshold: "≤ 3% deviation", objective: "≤ 1.5%", componentIds: ["cmp-6"] },
-    { id: "req-6",  code: "REQ-006", title: "Thermal model accuracy",     text: "The thermal model shall predict coolant supply/return temperatures within ±2 °C of hardware test data across the engagement duty cycle.", type: "Performance", priority: "Critical", method: "Analysis", measure: "CTP", threshold: "±2 °C", objective: "±1 °C", componentIds: ["cmp-8"] },
-    { id: "req-7",  code: "REQ-007", title: "Deterministic replay",       text: "A recorded scenario shall replay to an identical state trajectory (bit-exact physics state) on the same configuration.", type: "Functional", priority: "High", method: "Test", measure: "Spec", threshold: "Bit-exact over 30 min", objective: "", componentIds: ["cmp-3", "cmp-1"] },
-    { id: "req-8",  code: "REQ-008", title: "Fault injection coverage",   text: "The scenario manager shall inject all defined fault classes (sensor dropout, bus errors, actuator degradation, thermal derate) on operator command.", type: "Functional", priority: "Medium", method: "Demonstration", measure: "MOP", threshold: "4/4 fault classes", objective: "", componentIds: ["cmp-3"] },
-    { id: "req-9",  code: "REQ-009", title: "Time sync drift",            text: "Clock drift between simulation time and hardware rig time shall remain < 1 ms over a 4-hour continuous run.", type: "Performance", priority: "High", method: "Test", measure: "TPM", threshold: "< 1 ms / 4 h", objective: "< 0.2 ms / 4 h", componentIds: ["cmp-10"] },
-    { id: "req-10", code: "REQ-010", title: "E-stop propagation",         text: "Activation of any hardware e-stop shall halt hardware motion outputs and freeze the simulation within 100 ms.", type: "Safety", priority: "Critical", method: "Test", measure: "CTP", threshold: "≤ 100 ms", objective: "≤ 50 ms", componentIds: ["cmp-12", "cmp-9"] },
-    { id: "req-11", code: "REQ-011", title: "Terrain correlation",        text: "Simulated terrain geometry shall correlate with the surveyed proving-ground course within 10 cm RMS.", type: "Environmental", priority: "Medium", method: "Analysis", measure: "TPM", threshold: "≤ 10 cm RMS", objective: "≤ 5 cm RMS", componentIds: ["cmp-2"] },
-    { id: "req-12", code: "REQ-012", title: "Control mapping fidelity",   text: "The operator station shall replicate 100% of reference truck cab controls with correct feel, range, and bus behavior.", type: "Interface", priority: "High", method: "Demonstration", measure: "MOP", threshold: "100% control mapping", objective: "", componentIds: ["cmp-11"] }
+    { id: "req-1",  code: "REQ-001", systemId: "sys-3", title: "End-to-end HWIL latency",    text: "The HWIL loop (hardware input → simulation response → hardware output) shall exhibit end-to-end latency ≤ 20 ms.", type: "Performance", priority: "Critical", method: "Test", measure: "CTP", threshold: "≤ 20 ms", objective: "≤ 10 ms", extKey: "MSM-101", componentIds: ["cmp-9", "cmp-10"] },
+    { id: "req-2",  code: "REQ-002", systemId: "sys-2", title: "Vehicle dynamics fidelity",  text: "Vehicle dynamics model outputs shall match reference truck telemetry within 5% RMS error across the standard maneuver set.", type: "Performance", priority: "Critical", method: "Analysis", measure: "CTP", threshold: "≤ 5% RMS", objective: "≤ 3% RMS", extKey: "MSM-102", componentIds: ["cmp-5", "cmp-1"] },
+    { id: "req-3",  code: "REQ-003", systemId: "sys-1", title: "Render frame rate",          text: "The visual system shall sustain ≥ 60 FPS at full scene density on the reference hardware configuration.", type: "Performance", priority: "High", method: "Test", measure: "TPM", threshold: "≥ 60 FPS", objective: "≥ 90 FPS", componentIds: ["cmp-4"] },
+    { id: "req-4",  code: "REQ-004", systemId: "sys-3", title: "Bus message coverage",       text: "The hardware interface shall emulate 100% of the reference truck's operational CAN/J1939 message set.", type: "Interface", priority: "High", method: "Inspection", measure: "MOP", threshold: "100% of message set", objective: "", componentIds: ["cmp-9"] },
+    { id: "req-5",  code: "REQ-005", systemId: "sys-2", title: "Powertrain model accuracy",  text: "Powertrain model torque and fuel-burn curves shall match dynamometer reference data within 3%.", type: "Performance", priority: "High", method: "Analysis", measure: "TPM", threshold: "≤ 3% deviation", objective: "≤ 1.5%", componentIds: ["cmp-6"] },
+    { id: "req-6",  code: "REQ-006", systemId: "sys-2", title: "Thermal model accuracy",     text: "The thermal model shall predict coolant supply/return temperatures within ±2 °C of hardware test data across the engagement duty cycle.", type: "Performance", priority: "Critical", method: "Analysis", measure: "CTP", threshold: "±2 °C", objective: "±1 °C", componentIds: ["cmp-8"] },
+    { id: "req-7",  code: "REQ-007", systemId: "sys-1", title: "Deterministic replay",       text: "A recorded scenario shall replay to an identical state trajectory (bit-exact physics state) on the same configuration.", type: "Functional", priority: "High", method: "Test", measure: "Spec", threshold: "Bit-exact over 30 min", objective: "", componentIds: ["cmp-3", "cmp-1"] },
+    { id: "req-8",  code: "REQ-008", systemId: "sys-1", title: "Fault injection coverage",   text: "The scenario manager shall inject all defined fault classes (sensor dropout, bus errors, actuator degradation, thermal derate) on operator command.", type: "Functional", priority: "Medium", method: "Demonstration", measure: "MOP", threshold: "4/4 fault classes", objective: "", componentIds: ["cmp-3"] },
+    { id: "req-9",  code: "REQ-009", systemId: "sys-3", title: "Time sync drift",            text: "Clock drift between simulation time and hardware rig time shall remain < 1 ms over a 4-hour continuous run.", type: "Performance", priority: "High", method: "Test", measure: "TPM", threshold: "< 1 ms / 4 h", objective: "< 0.2 ms / 4 h", componentIds: ["cmp-10"] },
+    { id: "req-10", code: "REQ-010", systemId: "sys-3", title: "E-stop propagation",         text: "Activation of any hardware e-stop shall halt hardware motion outputs and freeze the simulation within 100 ms.", type: "Safety", priority: "Critical", method: "Test", measure: "CTP", threshold: "≤ 100 ms", objective: "≤ 50 ms", componentIds: ["cmp-12", "cmp-9"] },
+    { id: "req-11", code: "REQ-011", systemId: "sys-1", title: "Terrain correlation",        text: "Simulated terrain geometry shall correlate with the surveyed proving-ground course within 10 cm RMS.", type: "Environmental", priority: "Medium", method: "Analysis", measure: "TPM", threshold: "≤ 10 cm RMS", objective: "≤ 5 cm RMS", componentIds: ["cmp-2"] },
+    { id: "req-12", code: "REQ-012", systemId: "sys-3", title: "Control mapping fidelity",   text: "The operator station shall replicate 100% of reference truck cab controls with correct feel, range, and bus behavior.", type: "Interface", priority: "High", method: "Demonstration", measure: "MOP", threshold: "100% control mapping", objective: "", componentIds: ["cmp-11"] }
   ],
 
   /* M&S assets & test resources with VV&A tracking.
@@ -59,7 +59,7 @@ const SEED_DB = {
      accreditation: Not Started | Plan Approved | Evidence In Review |
                     Conditionally Accredited | Accredited | Not Accredited */
   resources: [
-    { id: "res-1", code: "RES-01", name: "Vehicle Dynamics Model v2.3", type: "Model", vvaRequired: true,
+    { id: "res-1", code: "RES-01", systemId: "sys-2", name: "Vehicle Dynamics Model v2.3", type: "Model", vvaRequired: true,
       description: "Multibody dynamics model of the MSM-1 chassis, suspension, and tires used inside the simulation core.",
       intendedUse: "Generate vehicle response data credible for DT&E of crew procedures and control software over primary/secondary roads and 30% grades.",
       owner: "Vehicle Model IPT", authority: "PEO Sim Accreditation Authority",
@@ -71,7 +71,7 @@ const SEED_DB = {
       owner: "Program Office", authority: "PEO Sim Accreditation Authority",
       verification: "In Progress", validation: "Planned", accreditation: "Not Started", accDate: "", accScope: "",
       artifacts: { accPlan: false, vvPlan: true, vvReport: false, accReport: false } },
-    { id: "res-3", code: "RES-03", name: "HWIL Truck Rig", type: "HWIL Rig", vvaRequired: true,
+    { id: "res-3", code: "RES-03", systemId: "sys-3", name: "HWIL Truck Rig", type: "HWIL Rig", vvaRequired: true,
       description: "Real MSM-1 truck hardware (cab, bus architecture, power system) on a fixture, coupled live to the simulation.",
       intendedUse: "Provide real hardware behavior (bus traffic, control feel, power transients) in the loop for integration and validation testing.",
       owner: "HWIL Team", authority: "PEO Sim Accreditation Authority",
@@ -92,7 +92,7 @@ const SEED_DB = {
   ],
 
   procedures: [
-    { id: "proc-1", code: "PROC-01", title: "HWIL Latency Characterization", description: "Instrumented measurement of end-to-end loop latency and jitter across load conditions using hardware timestamping.",
+    { id: "proc-1", code: "PROC-01", systemId: "sys-3", title: "HWIL Latency Characterization", description: "Instrumented measurement of end-to-end loop latency and jitter across load conditions using hardware timestamping.",
       steps: [
         "Install timestamp probes at hardware input, sim ingress, sim egress, and hardware output.",
         "Verify probe calibration against reference clock (RES-05 suite).",
@@ -102,7 +102,7 @@ const SEED_DB = {
         "Compute latency distribution; flag any sample > 20 ms.",
         "Archive raw timestamp logs to program data store."
       ] },
-    { id: "proc-2", code: "PROC-02", title: "Vehicle Dynamics Validation vs Referent", description: "Replay the standard maneuver set in sim and compare state trajectories against the reference truck telemetry (RES-04).",
+    { id: "proc-2", code: "PROC-02", systemId: "sys-2", title: "Vehicle Dynamics Validation vs Referent", description: "Replay the standard maneuver set in sim and compare state trajectories against the reference truck telemetry (RES-04).",
       steps: [
         "Load baselined referent dataset; verify checksum against CM record.",
         "Configure sim vehicle to match as-tested truck configuration (mass, CG, tire pressures).",
@@ -121,7 +121,7 @@ const SEED_DB = {
         "Verify automatic recovery and no desync after fault clearing.",
         "Analyze drift trend; flag if projected 4-h drift ≥ 1 ms."
       ] },
-    { id: "proc-4", code: "PROC-04", title: "Safety Chain & E-Stop Verification", description: "Exercise every e-stop and interlock path; measure propagation into both hardware outputs and simulation freeze.",
+    { id: "proc-4", code: "PROC-04", systemId: "sys-3", title: "Safety Chain & E-Stop Verification", description: "Exercise every e-stop and interlock path; measure propagation into both hardware outputs and simulation freeze.",
       steps: [
         "Configure rig in low-power safe mode with motion outputs to dummy loads.",
         "Instrument e-stop signal path with timestamp capture.",
@@ -225,10 +225,10 @@ const SEED_DB = {
   ],
 
   plans: [
-    { id: "plan-1", code: "TP-01", name: "Model V&V Campaign", description: "Verification and validation of the component models against accredited referent data and SME judgment — builds the V&V evidence package supporting the accreditation decision.",
+    { id: "plan-1", code: "TP-01", systemId: "sys-2", name: "Model V&V Campaign", description: "Verification and validation of the component models against accredited referent data and SME judgment — builds the V&V evidence package supporting the accreditation decision.",
       phase: "V&V", status: "Active", start: "2026-08-03", end: "2026-10-16", decisionId: "dec-1",
       caseIds: ["tc-3", "tc-4", "tc-5", "tc-7", "tc-11", "tc-14"] },
-    { id: "plan-2", code: "TP-02", name: "HWIL Integration & Acceptance", description: "Integration and acceptance testing of the coupled sim + hardware rig: latency, time sync, safety chain, bus coverage, and operator station — supports the Sim Readiness Review.",
+    { id: "plan-2", code: "TP-02", systemId: "sys-3", name: "HWIL Integration & Acceptance", description: "Integration and acceptance testing of the coupled sim + hardware rig: latency, time sync, safety chain, bus coverage, and operator station — supports the Sim Readiness Review.",
       phase: "Integration", status: "Active", start: "2026-08-24", end: "2026-11-20", decisionId: "dec-2",
       caseIds: ["tc-1", "tc-2", "tc-6", "tc-8", "tc-9", "tc-10", "tc-12", "tc-13"] }
   ],
@@ -245,7 +245,7 @@ const SEED_DB = {
       start: "2026-08-03", end: "2026-10-16", location: "Sim Lab", planId: "plan-1", decisionId: "dec-1",
       description: "Execution window for the model validation campaign against the accredited referent set.",
       notes: [{ id: "note-2", date: "2026-09-01", text: "RUN-006 washboard fidelity failure — recalibration in work (RSK-001). Campaign schedule holds for now." }] },
-    { id: "evt-3", code: "EVT-03", title: "4-hour endurance & time-sync run", type: "Test Event", status: "Complete",
+    { id: "evt-3", code: "EVT-03", systemId: "sys-3", title: "4-hour endurance & time-sync run", type: "Test Event", status: "Complete",
       start: "2026-08-21", end: "", location: "HWIL Lab", planId: "plan-2", decisionId: "",
       description: "First full-duration endurance run with drift sampling (PROC-03).",
       notes: [{ id: "note-3", date: "2026-08-21", text: "Frame rate and memory stable. Drift trend suggests ~0.8 ms at hour 4 — watch item (RSK-006)." }] },
@@ -253,7 +253,7 @@ const SEED_DB = {
       start: "2026-09-30", end: "", location: "PEO Sim (virtual)", planId: "", decisionId: "dec-1",
       description: "Working session with the accreditation authority to baseline acceptability criteria against the intended-use statement (RSK-004 mitigation).",
       notes: [] },
-    { id: "evt-5", code: "EVT-05", title: "Latency retest after thread isolation", type: "Test Event", status: "Planned",
+    { id: "evt-5", code: "EVT-05", systemId: "sys-3", title: "Latency retest after thread isolation", type: "Test Event", status: "Planned",
       start: "2026-09-29", end: "", location: "HWIL Lab", planId: "plan-2", decisionId: "dec-2",
       description: "Re-run PROC-01 transient-load condition after render-thread isolation fix (RSK-002 mitigation).",
       notes: [] },
@@ -323,13 +323,13 @@ const SEED_DB = {
     { id: "def-3", code: "DEF-003", title: "Comms-watchdog interlock annunciation delayed ~1 s", severity: "Minor", status: "Open",
       componentId: "cmp-12", caseIds: ["tc-9"], runId: "run-5", owner: "HWIL Team", opened: "2026-08-27", closed: "",
       description: "Interlock inhibit is immediate but the HMI annunciation for the comms-watchdog path lags about 1 second (observation OBS-007 on RUN-005). Cosmetic to safety function; still needs disposition before SRR-2." },
-    { id: "def-4", code: "DEF-004", title: "Terrain LOD pop-in above 40 m/s", severity: "Cosmetic", status: "Open",
+    { id: "def-4", code: "DEF-004", systemId: "sys-1", title: "Terrain LOD pop-in above 40 m/s", severity: "Cosmetic", status: "Open",
       componentId: "cmp-2", caseIds: [], runId: "", owner: "Sim Core Team", opened: "2026-08-24", closed: "",
       description: "Visible level-of-detail transitions on terrain meshes at high closure speeds. No effect on physics or measured fidelity; noted by SMEs during dry runs." }
   ],
 
   risks: [
-    { id: "rsk-1", code: "RSK-001", title: "Tire model fidelity gap off-road", category: "Technical",
+    { id: "rsk-1", code: "RSK-001", systemId: "sys-2", title: "Tire model fidelity gap off-road", category: "Technical",
       description: "The tire/terrain interaction model under-predicts suspension travel on washboard surfaces (7.2% RMS on RUN-006 vs 5% requirement), threatening validation of the dynamics model and downstream accreditation for off-road use cases.",
       likelihood: 4, impact: 4, initialLikelihood: 3, initialImpact: 4, residualLikelihood: 2, residualImpact: 3, status: "Mitigating", owner: "Vehicle Model IPT",
       relatedRequirementIds: ["req-2"], relatedCaseIds: ["tc-3", "tc-14"],
@@ -338,7 +338,7 @@ const SEED_DB = {
         { id: "mit-2", text: "Add dedicated off-road validation case to TP-01 to bound the accredited envelope.", status: "Approved", owner: "Test Team", due: "2026-09-25" },
         { id: "mit-3", text: "If gap persists, propose accreditation scope excluding washboard regime (AO decision).", status: "Proposed", owner: "Program Office", due: "2026-10-09" }
       ] },
-    { id: "rsk-2", code: "RSK-002", title: "Latency exceedance under transient load", category: "Technical",
+    { id: "rsk-2", code: "RSK-002", systemId: "sys-3", title: "Latency exceedance under transient load", category: "Technical",
       description: "Render-thread contention pushes P99 HWIL latency to 26 ms during fault-injection bursts (RUN-007), exceeding the 20 ms CTP and risking control-feel artifacts for HWIL crew testing.",
       likelihood: 3, impact: 4, status: "Mitigating", owner: "HWIL Team",
       relatedRequirementIds: ["req-1"], relatedCaseIds: ["tc-1"],
@@ -361,7 +361,7 @@ const SEED_DB = {
         { id: "mit-7", text: "Convene AO working session to baseline acceptability criteria against intended-use statement.", status: "In Progress", owner: "Program Office", due: "2026-09-30" },
         { id: "mit-8", text: "Map every TP-01 case to a draft acceptability criterion; identify evidence gaps.", status: "Proposed", owner: "V&V Agent", due: "2026-10-14" }
       ] },
-    { id: "rsk-5", code: "RSK-005", title: "HWIL rig personnel safety", category: "Safety",
+    { id: "rsk-5", code: "RSK-005", systemId: "sys-3", title: "HWIL rig personnel safety", category: "Safety",
       description: "The rig couples live truck hardware (high-voltage power system, moving actuators) to software under development; a sim fault commanding hardware could endanger personnel at the rig.",
       likelihood: 2, impact: 5, initialLikelihood: 3, initialImpact: 5, residualLikelihood: 1, residualImpact: 5, status: "Mitigating", owner: "Safety Officer",
       relatedRequirementIds: ["req-10"], relatedCaseIds: ["tc-8", "tc-9"],
@@ -369,7 +369,7 @@ const SEED_DB = {
         { id: "mit-9", text: "Hardware output limiter independent of sim software (verified in PROC-04).", status: "Verified", owner: "HWIL Team", due: "2026-08-20" },
         { id: "mit-10", text: "Two-person rule for any run with actuators live; barrier zone marked.", status: "In Progress", owner: "Safety Officer", due: "2026-11-20" }
       ] },
-    { id: "rsk-6", code: "RSK-006", title: "Clock drift accumulation on long runs", category: "Technical",
+    { id: "rsk-6", code: "RSK-006", systemId: "sys-3", title: "Clock drift accumulation on long runs", category: "Technical",
       description: "Early spot checks suggest drift may approach the 1 ms budget near hour 4, which would corrupt time-aligned validation comparisons and long-duration crew sessions.",
       likelihood: 3, impact: 3, status: "Open", owner: "HWIL Team",
       relatedRequirementIds: ["req-9"], relatedCaseIds: ["tc-2"],

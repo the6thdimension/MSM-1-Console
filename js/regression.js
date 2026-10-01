@@ -43,11 +43,12 @@ function testRunsPanel(title, list, emptyText) {
     const s = testRunStats(t);
     const plan = t.planId ? Store.get("plans", t.planId) : null;
     const sys = t.systemId ? Store.get("systems", t.systemId) : null;
+    const comp = t.componentId ? Store.get("components", t.componentId) : null;
     return `<tr>
       <td><a class="code" href="${testRunHref(t.id)}">${esc(t.code || t.id)}</a></td>
       <td><a href="${testRunHref(t.id)}">${esc(t.name || "Test run")}</a>${t.operator ? `<div class="faint small">${esc(t.operator)}</div>` : ""}</td>
       <td>${badge(t.status || "Active")}</td>
-      <td>${sys ? codeLink("systems", sys) : `<span class="faint">—</span>`} ${plan ? codeLink("plans", plan) : ""}</td>
+      <td>${comp ? codeLink("components", comp) : sys ? codeLink("systems", sys) : `<span class="faint">—</span>`} ${plan ? codeLink("plans", plan) : ""}</td>
       <td class="num">${runTimeLabel(t.startedAt || t.createdAt)}</td>
       <td class="num">${s.done}/${s.cases.length}</td>
       <td style="min-width:130px">${progressMeter(s.counts)}</td>
@@ -82,6 +83,28 @@ function regressionScopePanel(sys) {
       <dt>Regression plan</dt><dd>${plan ? chip("plans", plan) : `<span class="faint small">None yet — created on first Full Regression</span>`}</dd>
       <dt>Last test run</dt><dd>${last ? `${testRunLink(last)} ${badge(last.status || "Active")} <span class="mono faint">${lastStats.done}/${lastStats.cases.length} done</span>` : `<span class="faint small">Never run</span>`}</dd>
     </dl>`);
+}
+
+/* Component test scope and history shown on component detail. */
+function componentTestPanel(comp) {
+  const branch = Store.casesOfBranch(comp.id);
+  const scope = branch.filter(tc => tc.status !== "Retired");
+  const own = scope.filter(tc => tc.componentId === comp.id).length;
+  const subtree = Store.descendantIds(comp.id);
+  const runs = Store.testRunsSorted(t => t.componentId && subtree.has(t.componentId));
+  const last = runs[0], lastStats = last ? testRunStats(last) : null;
+  const body = `
+    <div class="scope-line">
+      <span class="scope-big">${scope.length}</span>
+      <span>test case${scope.length === 1 ? "" : "s"} in this component's test scope — ${own} on ${esc(comp.code)}${subtree.size > 1 ? `, ${scope.length - own} across ${subtree.size - 1} subcomponent(s)` : ""}${branch.length > scope.length ? ` · ${branch.length - scope.length} retired excluded` : ""}</span>
+    </div>
+    <dl class="def-grid" style="margin-top:10px">
+      <dt>Last component test</dt><dd>${last ? `${testRunLink(last)} ${badge(last.status || "Active")} <span class="mono faint">${lastStats.done}/${lastStats.cases.length} done · ${lastStats.counts.fail} fail</span>` : `<span class="faint small">Never run — use ▶ Component Test</span>`}</dd>
+    </dl>`;
+  return `<div class="grid-2">
+    ${panel("Component Test Scope", body, scope.length ? actBtn("▶ Start", "comp-test", comp.id, "", false) : "")}
+    ${testRunsPanel("Component & Subcomponent Test Runs", runs.slice(0, 6), "No component tests yet.")}
+  </div>`;
 }
 
 /* Review / removal recommendation and disposition state on case detail. */
@@ -282,7 +305,7 @@ Object.assign(Actions, {
         const p = plan || Store.add("plans", {
           name: `${sys.name} Full Regression`, phase: "Regression", status: "Active", start: todayISO(), end: "", extKey: "", decisionId: "",
           description: `Full regression of ${sys.code} ${sys.name}: every active test case across its components, subcomponents and system level.`,
-          regressionSystemId: sysId, caseIds: [], extLinks: []
+          regressionSystemId: sysId, systemId: sysId, caseIds: [], extLinks: []
         });
         fillPlan(p, scope);
         Store.update("plans", p.id, { status: "Active", regressionSystemId: p.regressionSystemId || sysId });
@@ -291,6 +314,26 @@ Object.assign(Actions, {
         Toast.show(`${t.code} started — ${scope.length} cases`);
         App.go(`#/testruns/${t.id}`);
       }, "Start Regression", true);
+  },
+
+  /* A test run scoped to one component and all of its subcomponents. */
+  "comp-test": compId => {
+    const comp = Store.get("components", compId);
+    const all = Store.casesOfBranch(compId);
+    const scope = all.filter(tc => tc.status !== "Retired");
+    if (!scope.length) { Toast.show(`${comp.code} has no active test cases to run.`, true); return; }
+    const own = scope.filter(tc => tc.componentId === compId).length;
+    const subs = Store.descendantIds(compId).size - 1;
+    const retired = all.length - scope.length;
+    Modal.confirm(`Start a component test of ${comp.code} ${comp.name}? ${scope.length} test case(s) in scope: ${own} on the component` +
+      (subs ? ` and ${scope.length - own} across its ${subs} subcomponent(s)` : "") + (retired ? `; ${retired} retired excluded` : "") +
+      ". A new test run session opens with the scope frozen.", () => {
+        const n = Store.all("testRuns").filter(t => t.componentId === compId).length + 1;
+        const t = startTestRun({ name: `${comp.name} component test${n > 1 ? ` ${n}` : ""}`, systemId: comp.systemId, componentId: compId,
+          caseIds: scope.map(tc => tc.id), notes: `Component test of ${comp.code}${subs ? " including its subcomponents" : ""}: ${scope.length} case(s) frozen at start.` });
+        Toast.show(`${t.code} started — ${scope.length} cases`);
+        App.go(`#/testruns/${t.id}`);
+      }, "Start Component Test", true);
   },
 
   "plan-autofill": planId => {

@@ -74,12 +74,14 @@ a test run brings its row back into view. Navigating to a new page starts at the
 | `js/ui.js` | Escaping, links, badges, page fragments, schema-driven forms, confirmations, toasts, command palette |
 | `js/views.js` | `Views`, `Actions`, field definitions, execution flow, reports, charts, document management |
 | `js/regression.js` | Test run sessions page, full-system regression, plan Auto-Fill / Start Run, review-for-removal dispositions |
+| `js/scope.js` | Scope banner, ownership page (assign program-level records to systems, reviewed suggestions) |
 | `js/app.js` | `App`: startup, hash routing, HTML replacement, scroll/anchor preservation, delegated events, file reads, bulk-selection state |
 
 Scripts are classic scripts sharing global bindings, not ES modules. Load order:
-seed → guard → fence → store → IO → UI → views → regression → commands → app.
-`regression.js` adds to `Views` and `Actions` before `commands.js` wraps every
-action in the command boundary; it does not override or patch existing functions. `App.boot()` loads/migrates data, attempts a
+seed → guard → fence → store → IO → UI → views → regression → scope → commands → app.
+`regression.js` and `scope.js` add to `Views` and `Actions` before `commands.js`
+wraps every action in the command boundary; they do not override or patch
+existing functions. The `Scope` object itself lives in `ui.js`. `App.boot()` loads/migrates data, attempts a
 daily snapshot, binds events, and renders. `App.render()` routes to a `Views`
 function, assigns its HTML to `#view`, and refreshes navigation counts. Clicks
 with `data-act` dispatch to `Actions`; forms call Store or mutate records directly.
@@ -97,7 +99,8 @@ The tables below describe the application's known fields, not a strict schema.
 | Collection | Important fields and relationships |
 |---|---|
 | `meta` | `program`, `version` (seed/blank use 2), `seq` counters, `jiraBaseUrl` |
-| `systems` | `id`, `code`, `name`, `description` |
+| `systems` | `id`, `code`, `name`, `description`, `team`, `lead` |
+| *(ownership)* | Optional `systemId` on `requirements`, `procedures`, `plans`, `testRuns`, `risks`, `defects`, `decisions`, `events`, `documents`, `resources` = owning system; blank or absent = program-level / shared |
 | `components` | `id`, `code`, `systemId`, optional `parentComponentId` (subcomponent link, any depth, same system), `name`, `description` |
 | `requirements` | `id`, `code`, `title`, `text`, `type`, `priority`, `method`, `measure`, `threshold`, `objective`, `componentIds[]`, `extKey` |
 | `procedures` | `id`, `code`, `title`, `description`, `steps[]` of strings |
@@ -130,9 +133,9 @@ Compatibility must retain both forms and validate counters against actual record
 | Area / hash | What it provides |
 |---|---|
 | `#/dashboard` | Coverage, verification, results, risks, defects, plan progress, snapshot trends, links to work |
-| `#/systems`, `#/components/:id` | System/component/subcomponent tree, derived component health, regression scope panel and ▶ Full Regression |
+| `#/systems`, `#/components/:id` | System/component/subcomponent tree, derived component health, regression scope panel and ▶ Full Regression; component pages add a component test scope panel, its test history, and ▶ Component Test |
 | `#/requirements` | Requirement register, component trace, verification rollup, measured-value history |
-| `#/cases` | Filterable cases, bulk changes, linked procedure/requirements/resources, runs and defects |
+| `#/cases` | Cases as component cards per system in tree order (subcomponent cards indented with a dashed purple rail and level badge; a system-level card per system), filters, bulk changes, review queue; `?view=table` gives the flat table |
 | `#/trace` | Requirement-by-case matrix grouped by system, coverage and gaps filters |
 | `#/procedures` | Procedure steps and entry/exit criteria, readiness strip, related cases |
 | `#/plans` | Case campaigns, dates, phase criteria, result rollup and pace estimate |
@@ -145,7 +148,8 @@ Compatibility must retain both forms and validate counters against actual record
 | `#/idsk`, `#/decisions/:id` | Decisions, informing requirements and plans, evidence readiness |
 | `#/schedule`, `#/events/:id` | Campaign Gantt, event dates/status/location and dated notes |
 | `#/documents` | External references and embedded files, related-code links |
-| `#/interchange` | CSV conversions, full JSON transfer, Jira URL setting, blank program |
+| `#/interchange` | CSV conversions, full JSON transfer, Jira URL setting, blank program (always whole-program, regardless of scope) |
+| `#/ownership` | Ownership overview per system; program-level records with reviewed owner suggestions; assign selected or accept suggestions |
 | `#/sitrep`, `#/decisions/:id/report` | Print-oriented weekly program and decision package reports |
 | `#/search?q=...` | Case-insensitive substring search across configured fields, capped at 40 hits |
 
@@ -173,12 +177,31 @@ Compatibility must retain both forms and validate counters against actual record
 - Test run results: a case's result in a session is its latest run carrying that
   `testRunId`. Completion counts Pass, Fail, Waived and Review for Removal as final;
   Blocked and In Progress are not. "vs Previous" compares with the latest earlier
-  session of the same plan, else of the same system (by `startedAt`/`createdAt`).
+  session of the same plan, else of the same component scope, else of the same
+  system (by `startedAt`/`createdAt`).
+- Component test: a session with `componentId` set to the component, scoped to every
+  non-Retired case on that component and all of its subcomponents. The component
+  filter on the cases page also includes subcomponent cases.
 - Review for Removal sets `removalNominated` and a `reviewDisposition` only when a
   run *newly* takes that result, so editing other run fields never re-raises a
   nomination the user already resolved. Keep clears it (case → Ready); Retire sets
   `Retired` and can remove the case from plans. Run changes never alter a Retired
   case's status. Status cycling skips Retired.
+- System scope (sidebar switcher): a per-browser view preference stored under
+  `msm1-te-scope`, never in the program database or exports. In a system, lists,
+  matrices, IDSK, schedule, dashboard, SITREP and sidebar counts show records owned
+  by that system, plus program-level records when "include program-level items" is
+  on. **Scope filters what is listed, never what is computed**: requirement
+  verification, component health, decision readiness and test-run results always
+  use all evidence regardless of system. Snapshot trends stay program-wide (labeled
+  so). Detail pages, search and form option lists are unscoped so cross-system
+  links remain possible; chips owned by another system show a ↗ marker.
+- Ownership: components, cases, runs and criteria derive their system from their
+  parent; plans fall back to `regressionSystemId`; defects follow their component.
+  Others use explicit `systemId`. Records created while scoped default to that
+  system. Deleting a system makes the records it owned program-level instead of
+  deleting them. Ownership suggestions appear only when every link of a record
+  points to exactly one system and are applied only on confirmation.
 - Component hierarchy: a parent must exist and cycles are rejected at validation.
   A parent in another system is displayed as a root rather than rejected. Deleting
   a component moves its children up to its parent; moving a component to another

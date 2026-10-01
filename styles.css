@@ -1302,6 +1302,112 @@ tr.uncovered .req-col { box-shadow: inset 3px 0 0 var(--red); }
 .tree-arrow { color: var(--ink-faint); font-family: var(--mono); margin-right: 6px; }
 .comp-pill.sub { border-style: dashed; }
 
+/* ---------- system scope ---------- */
+.scope-box { margin: 12px 12px 0; display: flex; flex-direction: column; gap: 5px; }
+.scope-box > label:first-child { font-family: var(--mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: 1px; color: var(--ink-faint); }
+#scope-select {
+  background: var(--bg-0);
+  border: 1px solid var(--line);
+  border-radius: var(--rad);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  padding: 6px 8px;
+  outline: none;
+}
+#sidebar.scoped #scope-select { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(82,169,255,.15); color: var(--blue); }
+#sidebar.scoped .brand { box-shadow: inset 0 -2px 0 var(--blue); }
+.scope-shared { display: flex; gap: 6px; align-items: center; font-size: 10.5px; color: var(--ink-faint); cursor: pointer; }
+.scope-shared input { accent-color: var(--blue); }
+.scope-shared input:disabled + * , .scope-shared:has(input:disabled) { opacity: .5; cursor: default; }
+.scope-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 8px 14px;
+  margin-bottom: 18px;
+  border: 1px solid rgba(82,169,255,.35);
+  border-left: 3px solid var(--blue);
+  border-radius: 5px;
+  background: rgba(82,169,255,.06);
+  font-size: 12.5px;
+}
+.scope-banner a { color: var(--blue); }
+.scope-banner .spacer { flex: 1; }
+.scope-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--blue); box-shadow: 0 0 8px var(--blue); }
+.xsys {
+  margin-left: 6px;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .5px;
+  color: var(--blue);
+  border: 1px solid rgba(82,169,255,.4);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+.sys-team { display: flex; gap: 12px; flex-wrap: wrap; font-family: var(--mono); font-size: 10.5px; color: var(--blue); margin: -2px 0 6px; }
+.own-bar { position: sticky; top: 0; z-index: 5; background: var(--bg-0); padding: 8px 0; }
+
+/* ---------- test case cards (cases page) ---------- */
+.case-sys-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  font-family: var(--disp);
+  font-weight: 600;
+  font-size: 18px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin: 22px 0 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+.case-sys-head a { color: var(--ink); }
+.case-card {
+  background: var(--bg-1);
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  margin: 0 0 12px calc(var(--depth, 0) * 32px);
+  overflow: hidden;
+  animation: rise 0.25s ease both;
+}
+.case-card.top { border-left: 3px solid var(--amber); }
+.case-card.sub {
+  border-left: 3px dashed var(--purple);
+  position: relative;
+}
+.case-card.sub .case-card-head { background: rgba(191,122,240,.06); }
+.case-card.sub::before {
+  /* elbow connector back toward the parent card */
+  content: "";
+  position: absolute;
+  left: -20px; top: -13px;
+  width: 16px; height: 34px;
+  border-left: 1px solid rgba(191,122,240,.45);
+  border-bottom: 1px solid rgba(191,122,240,.45);
+  border-bottom-left-radius: 6px;
+  overflow: visible;
+}
+.case-card.sub { overflow: visible; }
+.case-card.sub .table-scroll { border-radius: 0 0 6px 0; }
+.case-card.syslevel { border-left: 3px solid var(--ink-faint); }
+.case-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.cc-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cc-name { font-weight: 600; font-size: 14.5px; color: var(--ink); }
+.case-card.sub .cc-name { font-size: 13.5px; }
+.cc-meta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.cc-meter { width: 110px; }
+.cc-empty { padding: 10px 14px; font-size: 12px; color: var(--ink-faint); font-style: italic; }
+
 /* ---------- regression scope ---------- */
 .scope-line { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .scope-big { font-family: var(--disp); font-weight: 700; font-size: 34px; line-height: 1; color: var(--amber); }

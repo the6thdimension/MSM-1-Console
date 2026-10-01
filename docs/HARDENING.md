@@ -79,6 +79,12 @@ accepted as free text; every reference (including `testRuns.caseIds` and
 `parentComponentId`) must resolve, and component cycles are rejected. A file
 outside these rules is refused with the exact record path, unchanged.
 
+**System ownership.** Owning `systemId` on requirements, procedures, plans, risks,
+defects, decisions, events, documents and resources is optional and never added
+during import; absent means program-level, so existing databases (including the
+independent copy) import unchanged and nothing is assigned until the user confirms
+on the Ownership page. A dangling owner reference is refused like any other.
+
 Migration retains legacy `procedureId` and free-text `decision` fields. Defaults
 are added only when absent. Existing statuses and measurements are not rewritten
 during import. New runs add `recordedAt`; same-day historical runs without that

@@ -34,6 +34,40 @@ const ROUTE_OF = {
   runs: () => "#/runs"
 };
 
+/* ---------- system scope ----------
+   Which system the viewer is working in ("" = whole program). A per-browser view
+   preference, kept out of the program database: it filters what lists and counts
+   show, never what computed statuses mean. */
+const Scope = {
+  KEY: "msm1-te-scope",
+  system: "",
+  shared: true,
+  load() {
+    try { const v = JSON.parse(localStorage.getItem(this.KEY) || "{}"); this.system = v.system || ""; this.shared = v.shared !== false; }
+    catch (e) { this.system = ""; this.shared = true; }
+    this.validate();
+  },
+  save() { try { localStorage.setItem(this.KEY, JSON.stringify({ system: this.system, shared: this.shared })); } catch (e) { /* preference only */ } },
+  set(system, shared) { this.system = system || ""; if (shared !== undefined) this.shared = !!shared; this.validate(); this.save(); },
+  validate() { if (this.system && !Store.get("systems", this.system)) this.system = ""; },
+  current() { return this.system ? Store.get("systems", this.system) : null; },
+  includes(coll, r) {
+    if (!this.system) return true;
+    const owner = Store.ownerOf(coll, r);
+    return owner === this.system || (this.shared && owner === "");
+  },
+  list(coll) { this.validate(); return this.system ? Store.all(coll).filter(r => this.includes(coll, r)) : Store.all(coll); }
+};
+
+/* Marks a linked record owned by a different system than the one in scope. */
+function crossSystemTag(coll, entity) {
+  if (!Scope.system || coll === "systems" || !entity) return "";
+  const owner = Store.ownerOf(coll, entity);
+  if (!owner || owner === Scope.system) return "";
+  const s = Store.get("systems", owner);
+  return `<span class="xsys" title="Owned by ${esc(s ? s.name : "another system")}">↗ ${esc(s ? s.code : "other")}</span>`;
+}
+
 function codeLink(coll, entity) {
   if (!entity) return `<span class="faint">—</span>`;
   return `<a class="code" href="${ROUTE_OF[coll](entity.id)}">${esc(entity.code)}</a>`;
@@ -42,7 +76,7 @@ function codeLink(coll, entity) {
 function chip(coll, entity, label) {
   if (!entity) return "";
   const name = label || entity.name || entity.title;
-  return `<a class="chip" href="${ROUTE_OF[coll](entity.id)}"><span class="code">${esc(entity.code)}</span>${esc(name)}</a>`;
+  return `<a class="chip" href="${ROUTE_OF[coll](entity.id)}"><span class="code">${esc(entity.code)}</span>${esc(name)}${crossSystemTag(coll, entity)}</a>`;
 }
 
 function chips(coll, entities, emptyText) {
@@ -268,6 +302,7 @@ const Palette = {
       { type: "Go", label: "M&S / VV&A", hash: "#/resources" },
       { type: "Go", label: "Interchange", hash: "#/interchange" },
       { type: "Go", label: "Weekly SITREP", hash: "#/sitrep" },
+      { type: "Go", label: "Ownership — assign records to systems", hash: "#/ownership" },
       { type: "Go", label: "Documents", hash: "#/documents" },
       { type: "New", label: "Link Document", act: "add-doc-link" },
       { type: "New", label: "New Test Case", act: "add-case" },

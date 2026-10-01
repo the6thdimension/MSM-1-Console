@@ -18,6 +18,11 @@
         <span class="brand-sub">Test &amp; Evaluation</span>
       </div>
     </div>
+    <div class="scope-box">
+      <label for="scope-select">Scope</label>
+      <select id="scope-select"></select>
+      <label class="scope-shared"><input type="checkbox" id="scope-shared"> include program-level items</label>
+    </div>
     <input id="global-search" type="search" placeholder="Search everything…  /" autocomplete="off">
     <nav id="main-nav">
       <a href="#/dashboard" data-nav="dashboard"><span class="nav-ico">◈</span>Dashboard</a>
@@ -34,6 +39,7 @@
       <a href="#/risks" data-nav="risks"><span class="nav-ico">⚠</span>Risks <em class="nav-count" data-count="risks"></em></a>
       <a href="#/resources" data-nav="resources"><span class="nav-ico">◎</span>M&amp;S / VV&amp;A <em class="nav-count" data-count="resources"></em></a>
       <a href="#/documents" data-nav="documents"><span class="nav-ico">🗎</span>Documents <em class="nav-count" data-count="documents"></em></a>
+      <a href="#/ownership" data-nav="ownership"><span class="nav-ico">⊕</span>Ownership</a>
       <a href="#/interchange" data-nav="interchange"><span class="nav-ico">⇅</span>Interchange</a>
     </nav>
     <div class="sidebar-foot">
@@ -58,6 +64,7 @@
 <script src="js/ui.js"></script>
 <script src="js/views.js"></script>
 <script src="js/regression.js"></script>
+<script src="js/scope.js"></script>
 <script src="js/commands.js"></script>
 <script src="js/app.js"></script>
 </body>

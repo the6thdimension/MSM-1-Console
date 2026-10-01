@@ -38,6 +38,9 @@ flowchart TD
   Boot --> Router[app.js: hash router and event delegation]
   Router -->|Select view| Views[views.js: Views]
   Regression[regression.js: test runs and regression flows] -->|Adds Views and Actions at load| Views
+  ScopeMod[scope.js: scope banner and ownership page] -->|Adds Views and Actions at load| Views
+  Views -->|Scope.list filters lists by owning system| Store
+  ScopePref[(localStorage: msm1-te-scope view preference)] <--> Views
   Views -->|Relations and rollups| Store[store.js: Store]
   Views --> UI[ui.js: HTML fragments and badges]
   Views --> DOM[View HTML in DOM]
@@ -99,7 +102,10 @@ cardinalities. A case belongs to a component (whose system it inherits) or, with
 no component, directly to a system. Components nest through `parentComponentId`;
 cycles are rejected. A test run session stores its frozen case list; each case's
 result in it is an ordinary run carrying `testRunId`, so per-case history and
-every existing rollup keep working unchanged. Each criterion belongs to a procedure **or** a plan through
+every existing rollup keep working unchanged. Requirements, procedures, plans,
+test runs, risks, defects, decisions, events, documents and resources may carry an
+owning `systemId`; blank means program-level. Ownership drives only which records
+the system scope lists, never relationships or computed status. Each criterion belongs to a procedure **or** a plan through
 `parentType` + `parentId`, not both. Many-to-many links use ID arrays, not join
 tables. Mitigations and event notes are nested records. Documents use free-text
 `relatedCodes`, while evidence references on runs are also text; neither is an

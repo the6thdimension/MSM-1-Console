@@ -62,6 +62,35 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
     assert.equal(await page.evaluate(()=>Store.get('cases','tc-9').status),'Complete');
     console.log('PASS full regression, filtered recording, execute round trip, new results');
 
+    await page.evaluate(()=>App.go('#/cases'));
+    assert.ok(await page.locator('.case-card.sub').count()>=2,'subcomponent cards rendered');
+    assert.notEqual(await page.locator('.case-card.sub').first().evaluate(e=>getComputedStyle(e).borderLeftStyle),
+      await page.locator('.case-card.top').first().evaluate(e=>getComputedStyle(e).borderLeftStyle),'subcomponent cards styled differently');
+    await page.evaluate(()=>App.go('#/components/cmp-5'));
+    await page.locator('.page-actions [data-act="comp-test"]').click();await page.locator('#confirm-yes').click();
+    await page.waitForFunction(()=>location.hash.startsWith('#/testruns/'));
+    const ct=await page.evaluate(()=>Store.get('testRuns',location.hash.split('/')[2]));
+    assert.equal(ct.componentId,'cmp-5');assert.ok(ct.caseIds.includes('tc-15'),'component test includes nested subcomponent cases');
+    console.log('PASS component cards and component test from component page');
+
+    await page.evaluate(()=>App.go('#/requirements'));
+    await page.locator('#scope-select').selectOption('sys-3');
+    await page.locator('.scope-banner').waitFor();
+    const scopedReqs=await page.evaluate(()=>Store.all('requirements').filter(r=>Store.ownerOf('requirements',r)==='sys-3'||!Store.ownerOf('requirements',r)).length);
+    assert.equal(await page.locator('[data-count="requirements"]').textContent(),String(scopedReqs));
+    await page.locator('#scope-shared').uncheck();
+    assert.equal(await page.evaluate(()=>Scope.list('requirements').every(r=>Store.ownerOf('requirements',r)==='sys-3')),true);
+    await page.reload();await page.waitForFunction(()=>!!Store.db&&!Store._tx);
+    assert.equal(await page.locator('#scope-select').inputValue(),'sys-3','scope survives reload as a view preference');
+    await page.evaluate(()=>App.go('#/ownership'));
+    const unowned=()=>page.evaluate(()=>Store.OWNED.reduce((n,c)=>n+Store.all(c).filter(r=>!Store.ownerOf(c,r)).length,0));
+    const before=await unowned();
+    await page.locator('[data-act="own-accept"]').click();await page.locator('#confirm-yes').click();
+    await page.waitForFunction(n=>Store.OWNED.reduce((m,c)=>m+Store.all(c).filter(r=>!Store.ownerOf(c,r)).length,0)<n,before);
+    await page.locator('#scope-select').selectOption('');
+    assert.equal(await page.locator('.scope-banner').count(),0);
+    console.log('PASS scope switcher, persisted preference, ownership suggestions');
+
     await page.evaluate(()=>App.go('#/interchange'));
     const beforeCSV=await page.evaluate(()=>Store.db.requirements.length);
     await page.locator('#import-jira-file').setInputFiles({name:'synthetic.csv',mimeType:'text/csv',buffer:Buffer.from('Summary,Priority\nBrowser CSV,High')});
@@ -102,7 +131,7 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
     await tab.close();await page.reload();await page.waitForFunction(()=>!!Store.db&&!Store._tx);
     console.log('PASS real browser competing tabs and five simultaneous-write races');
 
-    for(const route of ['dashboard','schedule','systems','requirements','cases','trace','idsk','procedures','plans','runs','defects','risks','resources','documents','interchange','sitrep','decisions/dec-1/report','testruns/tr-1','components/cmp-14']) {
+    for(const route of ['dashboard','schedule','systems','requirements','cases','trace','idsk','procedures','plans','runs','defects','risks','resources','documents','interchange','sitrep','decisions/dec-1/report','testruns/tr-1','components/cmp-14','ownership']) {
       await page.evaluate(r=>App.go('#/'+r),route);await page.waitForFunction(r=>location.hash==='#/'+r,route);
       assert.doesNotMatch(await page.locator('#view').textContent(),/Something went wrong rendering/);
     }
