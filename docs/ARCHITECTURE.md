@@ -90,6 +90,8 @@ erDiagram
   RELEASE o|--o{ BUILD : contains
   BUILD o|--o{ RUN : measured_on
   BUILD o|--o{ TEST_RUN : under_test
+  BUILD o|--o{ DEFECT : found_fixed_verified_in
+  RELEASE ||--o{ CRITERION : exit_criteria
   COMPONENT o|--o{ DEFECT : affected_by
   CASE }o--o{ DEFECT : linked_to
   RUN o|--o{ DEFECT : discovery_run

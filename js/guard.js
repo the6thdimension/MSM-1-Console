@@ -13,7 +13,7 @@ const DataGuard = {
     cases: { componentId: 'components', systemId: 'systems', procedureId: 'procedures', requirementIds: 'requirements', resourceIds: 'resources' },
     procedures: { systemId: 'systems' },
     plans: { caseIds: 'cases', decisionId: 'decisions', regressionSystemId: 'systems', systemId: 'systems' }, runs: { caseId: 'cases', planId: 'plans', testRunId: 'testRuns', buildId: 'builds' },
-    defects: { componentId: 'components', caseIds: 'cases', runId: 'runs', systemId: 'systems' },
+    defects: { componentId: 'components', caseIds: 'cases', runId: 'runs', systemId: 'systems', foundInBuildId: 'builds', fixedInBuildId: 'builds', verifiedInBuildId: 'builds' },
     risks: { relatedRequirementIds: 'requirements', relatedCaseIds: 'cases', systemId: 'systems' },
     decisions: { requirementIds: 'requirements', systemId: 'systems' }, events: { planId: 'plans', decisionId: 'decisions', systemId: 'systems' },
     documents: { systemId: 'systems' }, resources: { systemId: 'systems' },
@@ -24,7 +24,7 @@ const DataGuard = {
     cases: {status: ['Draft','Ready','In Progress','Complete','Blocked','Retired']},
     runs: {result: ['Pass','Fail','Blocked','In Progress','Waived','Review for Removal']},
     plans: {status: ['Planning','Active','Complete','On Hold','Closed']},
-    criteria: {parentType: ['procedure','plan'], kind: ['entry','exit'], status: ['open','met','waived']},
+    criteria: {parentType: ['procedure','plan','release'], kind: ['entry','exit'], status: ['open','met','waived']},
     defects: {severity: ['Critical','Major','Minor','Cosmetic'], status: ['Open','In Analysis','Fix In Work','Ready for Retest','Closed','Deferred']},
     risks: {status: ['Open','Mitigating','Monitoring','Closed']},
     decisions: {status: ['Pending','On Track','At Risk','Complete']},
@@ -207,7 +207,7 @@ const DataGuard = {
           const rel = (db.releases || []).find(x => x.id === r.releaseId);
           if (rel && rel.systemId && rel.systemId !== r.systemId) this.fail(`${path}.releaseId`,'release belongs to a different system');
         }
-        if (coll === 'criteria' && !db[r.parentType==='plan'?'plans':'procedures'].some(p=>p.id===r.parentId)) this.fail(path,'missing criterion parent');
+        if (coll === 'criteria' && !(db[CRITERIA_PARENT[r.parentType]] || []).some(p=>p.id===r.parentId)) this.fail(path,'missing criterion parent');
         for (const step of coll==='procedures'?r.steps:[]) if (typeof step !== 'string') this.fail(`${path}.steps`,'expected text steps');
         // Defect links are optional: validated when present, never defaulted onto existing records.
         if (coll==='defects' && r.extLinks!==undefined && !Array.isArray(r.extLinks)) this.fail(`${path}.extLinks`,'expected an array');

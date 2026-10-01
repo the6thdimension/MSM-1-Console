@@ -62,7 +62,7 @@ const App = {
         case "interchange": html = Views.interchange(); break;
         case "ownership":   html = Views.ownership(params); break;
         case "releases":    html = seg[1] ? Views.releaseDetail(seg[1]) : Views.releases(params); break;
-        case "builds":      html = seg[1] ? Views.buildDetail(seg[1]) : Views.releases(params); nav = "releases"; break;
+        case "builds":      html = seg[1] ? Views.buildDetail(seg[1], params) : Views.releases(params); nav = "releases"; break;
         case "search":      html = Views.searchResults(decodeURIComponent(seg.slice(1).join("/") || params.get("q") || "")); nav = ""; break;
         default:            html = Views.dashboard(); nav = "dashboard";
       }

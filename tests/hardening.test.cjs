@@ -433,6 +433,54 @@ test('releases and builds: per-system streams, current build, builds-old age, cl
   await S.command('del system',()=>S.remove('systems',sys));
   assert.equal(S.get('builds',b2.id).systemId,'','builds become program-level, not deleted');h.DataGuard.validate(S.db);
 });
+test('phase 2: release readiness, build comparison and defect retest proposals',async()=>{
+  const h=await ready(),S=h.Store;
+  const tc=S.all('cases').find(c=>S.latestRun(c.id)&&S.caseSystemId(c)),sys=S.caseSystemId(tc);
+  const tc2=S.casesOfSystem(sys).find(c=>c.id!==tc.id&&c.status!=='Retired');
+  const B=(label,status,received,rel)=>S.add('builds',{label,systemId:sys,releaseId:rel||'',status,received,url:'',cycle:'',description:''});
+  let rel,a,b,c,x,d,crit;
+  await S.command('setup',()=>{
+    rel=S.add('releases',{name:'Synthetic R2',systemId:sys,status:'In Test',targetDate:'2026-11-01',releasedDate:'',decisionId:'',fixVersion:'',description:''});
+    a=B('2.0.0','Accepted','2026-08-01',rel.id);b=B('2.0.1','Under Test','2026-09-01',rel.id);x=B('2.0.2','Rejected','2026-09-15',rel.id);
+    const add=(caseId,buildId,result,date)=>S.add('runs',{caseId,buildId,result,date,operator:'',planId:'',measured:'',evidence:'',notes:'',extKey:''});
+    add(tc.id,a.id,'Pass','2026-08-02'); if(tc2)add(tc2.id,a.id,'Fail','2026-08-02');
+    add(tc.id,b.id,'Fail','2026-09-02'); if(tc2)add(tc2.id,b.id,'Pass','2026-09-02');
+    d=S.add('defects',{title:'Synthetic regression',description:'',severity:'Major',status:'Fix In Work',componentId:tc.componentId||'',caseIds:[tc.id],runId:'',owner:'',opened:'2026-09-02',closed:'',systemId:sys,foundInBuildId:b.id});
+    crit=S.add('criteria',{parentType:'release',parentId:rel.id,kind:'exit',text:'Synthetic exit',status:'open'});
+  });
+  // Rejected builds are never the candidate or the comparison baseline.
+  assert.equal(S.releaseCandidate(rel.id).id,b.id);
+  assert.equal(S.previousBuild(b).id,a.id);
+  const cmp=S.compareBuilds(b.id,a.id);
+  assert.deepEqual(copy(cmp.regressed.map(i=>i.tc.id)),[tc.id]);
+  if(tc2)assert.deepEqual(copy(cmp.fixed.map(i=>i.tc.id)),[tc2.id]);
+  assert.match(h.Views.buildDetail(b.id,new URLSearchParams()),/Regressed[^]*passed before, fails here/);
+  // Readiness: candidate results, release exit criteria (owned through the release), open defects.
+  const R=S.releaseReadiness(rel.id);
+  assert.equal(R.rows.find(r=>r.tc.id===tc.id).here.result,'Fail');
+  assert.ok(R.defects.some(q=>q.id===d.id));assert.equal(R.exit[0].id,crit.id);
+  assert.equal(S.ownerOf('criteria',crit),sys,'release criteria belong to the release system');
+  assert.match(h.Views.releaseDetail(rel.id),/Run On Candidate[^]*Exit Criteria/);
+  // Retest proposals never change the defect by themselves.
+  assert.equal(S.defectRetest(d),null,'no fix build and no later pass yet');
+  let c2;await S.command('fix',()=>{c=B('2.0.3','Under Test','2026-09-20',rel.id);S.update('defects',d.id,{fixedInBuildId:c.id});});
+  const before=JSON.stringify(S.get('defects',d.id));
+  assert.equal(S.defectRetest(S.get('defects',d.id)).fixReady.id,c.id,'fix build is current: ready to retest');
+  assert.equal(JSON.stringify(S.get('defects',d.id)),before,'proposal is read-only');
+  await S.command('retest',()=>{c2=S.add('runs',{caseId:tc.id,buildId:c.id,result:'Pass',date:'2026-09-21',operator:'',planId:'',measured:'',evidence:'',notes:'',extKey:''});});
+  const rt=S.defectRetest(S.get('defects',d.id));
+  assert.equal(rt.passedOn.run.id,c2.id);assert.equal(rt.fixReady,null,'a passed retest replaces the ready-to-retest prompt');
+  assert.match(h.Views.defectDetail(d.id),/Close as verified/);
+  // A pass on the very build it was found in is not a retest.
+  await S.command('same build',()=>S.update('defects',d.id,{fixedInBuildId:'',foundInBuildId:c.id}));
+  assert.equal(S.defectRetest(S.get('defects',d.id)),null);
+  // Validation and cleanup.
+  const bad=copy(S.db);bad.defects.find(q=>q.id===d.id).fixedInBuildId='bld-missing';assert.throws(()=>h.DataGuard.validate(bad),/missing builds reference/);
+  await S.command('del build',()=>S.remove('builds',c.id));
+  assert.equal(S.get('defects',d.id).foundInBuildId,'');
+  await S.command('del release',()=>S.remove('releases',rel.id));
+  assert.equal(S.get('criteria',crit.id),null,'release criteria go with their release');h.DataGuard.validate(S.db);
+});
 test('runtime shell has no remote assets and disallows background connections',()=>{
   const html=fs.readFileSync(path.join(root,'index.html'),'utf8');assert.doesNotMatch(html,/(?:src|href)="https?:/);assert.match(html,/connect-src 'none'/);
   assert.doesNotMatch(fs.readFileSync(path.join(root,'js/views.js'),'utf8'),/fetch\(/);

@@ -10,7 +10,7 @@ const SEED_DB = {
   meta: {
     program: "MSM-1 Virtual Proving Ground",
     version: 2,
-    seq: { systems: 3, components: 15, requirements: 19, "requirements.REQ": 12, "requirements.PSPEC": 3, "requirements.SWR": 4, cases: 15, procedures: 5, criteria: 31, plans: 2, runs: 9, risks: 7, mitigations: 13, resources: 5, decisions: 3, events: 9, notes: 5, defects: 4, documents: 3, testRuns: 1, releases: 3, builds: 9 }
+    seq: { systems: 3, components: 15, requirements: 19, "requirements.REQ": 12, "requirements.PSPEC": 3, "requirements.SWR": 4, cases: 15, procedures: 5, criteria: 36, plans: 2, runs: 9, risks: 7, mitigations: 13, resources: 5, decisions: 3, events: 9, notes: 5, defects: 4, documents: 3, testRuns: 1, releases: 3, builds: 9 }
   },
 
   systems: [
@@ -149,7 +149,7 @@ const SEED_DB = {
       ] }
   ],
 
-  /* Entry & exit criteria. parentType: procedure | plan.
+  /* Entry & exit criteria. parentType: procedure | plan | release.
      status: open | met | waived */
   criteria: [
     { id: "cri-1",  parentType: "procedure", parentId: "proc-1", kind: "entry", text: "Latency instrumentation calibration current (RES-05, ≤ 90 days)", status: "met" },
@@ -190,7 +190,13 @@ const SEED_DB = {
     { id: "cri-28", parentType: "plan", parentId: "plan-2", kind: "entry", text: "HWIL rig safety chain verification (PROC-04) passed", status: "met" },
     { id: "cri-29", parentType: "plan", parentId: "plan-2", kind: "entry", text: "Integrated sim release candidate tagged and deployed to rig", status: "open" },
     { id: "cri-30", parentType: "plan", parentId: "plan-2", kind: "exit",  text: "All acceptance cases pass or waivers signed by program office", status: "open" },
-    { id: "cri-31", parentType: "plan", parentId: "plan-2", kind: "exit",  text: "Sim Readiness Review package delivered (results, caveats, VV&A status)", status: "open" }
+    { id: "cri-31", parentType: "plan", parentId: "plan-2", kind: "exit",  text: "Sim Readiness Review package delivered (results, caveats, VV&A status)", status: "open" },
+    /* Release exit criteria (parentType: release). */
+    { id: "cri-32", parentType: "release", parentId: "rel-1", kind: "exit", text: "Every active SYS-01 case run on the release candidate; failures dispositioned", status: "open" },
+    { id: "cri-33", parentType: "release", parentId: "rel-1", kind: "exit", text: "No open Critical or Major defects against SYS-01", status: "open" },
+    { id: "cri-34", parentType: "release", parentId: "rel-1", kind: "exit", text: "Version description document and release notes delivered to CM", status: "met" },
+    { id: "cri-35", parentType: "release", parentId: "rel-2", kind: "exit", text: "Validation cases pass on the candidate within referent RMS thresholds", status: "open" },
+    { id: "cri-36", parentType: "release", parentId: "rel-3", kind: "exit", text: "Safety-chain cases (PROC-04) pass on the release candidate", status: "met" }
   ],
 
   /* Test cases. venue: Live | Virtual | Constructive | HWIL | Hybrid
@@ -328,9 +334,9 @@ const SEED_DB = {
     { id: "bld-2", code: "BLD-002", systemId: "sys-1", releaseId: "rel-1", label: "0.9.0", status: "Accepted", received: "2026-08-03", url: "", cycle: "SIM 0.9.0 regression",
       description: "Tagged 0.9 build deployed to the HWIL rig (EVT-01); baseline for the V&V campaign." },
     { id: "bld-3", code: "BLD-003", systemId: "sys-1", releaseId: "rel-1", label: "0.9.1", status: "Under Test", received: "2026-09-02", url: "", cycle: "",
-      description: "Render-thread priority decoupling for DEF-002 (RSK-002); replay checksum logging." },
+      description: "Replay checksum logging; fault-injection event log; terrain LOD streaming fix (DEF-004)." },
     { id: "bld-4", code: "BLD-004", systemId: "sys-1", releaseId: "rel-1", label: "0.9.2-rc1", status: "Received", received: "2026-09-28", url: "", cycle: "",
-      description: "Release candidate 1: core isolation for the bus bridge thread. Not yet smoke tested." },
+      description: "Release candidate 1: render-thread priority decoupling and bus-bridge core isolation (DEF-002, RSK-002). Not yet smoke tested." },
     { id: "bld-5", code: "BLD-005", systemId: "sys-2", releaseId: "", label: "VM 2.3.0", status: "Accepted", received: "2026-07-28", url: "", cycle: "",
       description: "Previous vehicle-model release; baseline dynamics." },
     { id: "bld-6", code: "BLD-006", systemId: "sys-2", releaseId: "rel-2", label: "VM 2.4.0", status: "Under Test", received: "2026-08-30", url: "", cycle: "",
@@ -351,17 +357,17 @@ const SEED_DB = {
   ],
 
   defects: [
-    { id: "def-1", code: "DEF-001", title: "Suspension travel under-predicted on washboard", severity: "Major", status: "Fix In Work",
+    { id: "def-1", code: "DEF-001", foundInBuildId: "bld-6", title: "Suspension travel under-predicted on washboard", severity: "Major", status: "Fix In Work",
       componentId: "cmp-5", caseIds: ["tc-3"], runId: "run-6", owner: "Vehicle Model IPT", opened: "2026-09-01", closed: "",
       description: "Tire/terrain model under-predicts suspension travel on washboard surface by ~7% RMS vs referent (RUN-006). Root cause suspected in tire lug-stiffness table extrapolation beyond 30 Hz input. Blocks REQ-002 validation off-road; feeds RSK-001." },
-    { id: "def-2", code: "DEF-002", extLinks: [{ url: "https://yourteam.atlassian.net/browse/MSM-231", label: "Jira bug MSM-231" }], title: "Render thread starves bus bridge under fault bursts", severity: "Critical", status: "Fix In Work",
+    { id: "def-2", code: "DEF-002", foundInBuildId: "bld-3", fixedInBuildId: "bld-4", extLinks: [{ url: "https://yourteam.atlassian.net/browse/MSM-231", label: "Jira bug MSM-231" }], title: "Render thread starves bus bridge under fault bursts", severity: "Critical", status: "Fix In Work",
       componentId: "cmp-4", caseIds: ["tc-1"], runId: "run-7", owner: "Sim Core Team", opened: "2026-09-04", closed: "",
       description: "During fault-injection bursts the render thread contends with the bus-bridge thread, pushing P99 HWIL latency to 26 ms (REQ-001 threshold 20 ms). Fix: core isolation + priority decoupling (RSK-002 mitigation)." },
-    { id: "def-3", code: "DEF-003", title: "Comms-watchdog interlock annunciation delayed ~1 s", severity: "Minor", status: "Open",
+    { id: "def-3", code: "DEF-003", foundInBuildId: "bld-9", title: "Comms-watchdog interlock annunciation delayed ~1 s", severity: "Minor", status: "Open",
       componentId: "cmp-12", caseIds: ["tc-9"], runId: "run-5", owner: "HWIL Team", opened: "2026-08-27", closed: "",
       description: "Interlock inhibit is immediate but the HMI annunciation for the comms-watchdog path lags about 1 second (observation OBS-007 on RUN-005). Cosmetic to safety function; still needs disposition before SRR-2." },
-    { id: "def-4", code: "DEF-004", systemId: "sys-1", title: "Terrain LOD pop-in above 40 m/s", severity: "Cosmetic", status: "Open",
-      componentId: "cmp-2", caseIds: [], runId: "", owner: "Sim Core Team", opened: "2026-08-24", closed: "",
+    { id: "def-4", code: "DEF-004", foundInBuildId: "bld-2", fixedInBuildId: "bld-3", systemId: "sys-1", title: "Terrain LOD pop-in above 40 m/s", severity: "Cosmetic", status: "Open",
+      componentId: "cmp-2", caseIds: ["tc-6"], runId: "", owner: "Sim Core Team", opened: "2026-08-24", closed: "",
       description: "Visible level-of-detail transitions on terrain meshes at high closure speeds. No effect on physics or measured fidelity; noted by SMEs during dry runs." }
   ],
 

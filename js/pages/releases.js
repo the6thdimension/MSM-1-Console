@@ -160,26 +160,96 @@ function buildChip(b) {
   return `<a class="build-tag" href="#/builds/${b.id}">⎇ ${esc(b.label)}</a> ${badge(b.status)}`;
 }
 
+/* Release readiness: how the system's active cases stand against the release candidate
+   (the release's newest build that was not rejected), plus requirements, exit criteria and
+   open defects. Results from older builds still count; they are shown as carried forward. */
 Views.releaseDetail = function (id) {
-  const r = Store.get("releases", id);
-  if (!r) return notFound("Release");
+  const R = Store.releaseReadiness(id);
+  if (!R) return notFound("Release");
+  const { rel: r, cand, rows, reqs, olderOnly, defects, exit, decision: dec } = R;
   const sys = r.systemId ? Store.get("systems", r.systemId) : null;
-  const dec = r.decisionId ? Store.get("decisions", r.decisionId) : null;
   const builds = Store.buildsOfRelease(id);
+  const counts = resultCounts(rows.map(x => x.here));
+  const onCand = rows.filter(x => x.here).length;
+  const carried = rows.filter(x => !x.here && x.latest).length, never = rows.filter(x => !x.latest).length;
+  const exitMet = exit.filter(c => c.status !== "open").length;
+  const blocking = defects.filter(d => d.severity === "Critical" || d.severity === "Major").length;
+  const margin = dec && dec.date && r.targetDate ? Math.round((Date.parse(dec.date) - Date.parse(r.targetDate)) / 86400000) : null;
+  const marginTxt = margin == null ? "" : margin >= 0
+    ? ` · ${margin} day${margin === 1 ? "" : "s"} before ${esc(dec.code)} (${esc(dec.date)})`
+    : ` · <span class="bad">target is ${-margin} day${margin === -1 ? "" : "s"} after ${esc(dec.code)} (${esc(dec.date)})</span>`;
+
+  // Failing on the candidate first, then carried forward, never run, other, passing.
+  const rank = x => !x.here ? (x.latest ? 1 : 2) : x.here.result === "Fail" ? 0 : ["Pass", "Waived"].includes(x.here.result) ? 4 : 3;
+  const caseRows = rows.slice().sort((a, b) => rank(a) - rank(b) || Store.byCodeOrder(a.tc, b.tc)).map(x => `<tr>
+      <td>${codeLink("cases", x.tc)}</td>
+      <td><a href="#/cases/${x.tc.id}">${esc(x.tc.title)}</a></td>
+      <td>${x.here ? badge(x.here.result) : `<span class="faint small">${cand ? `not run on ${esc(cand.label)}` : "—"}</span>`}</td>
+      <td>${x.latest ? `${runBadge(x.latest)} <span class="small">${buildTag(x.latest)}</span>` : `<span class="faint small">never run</span>`}</td>
+    </tr>`).join("");
+  const defRows = defects.map(d => `<tr>
+      <td>${codeLink("defects", d)}</td>
+      <td><a href="#/defects/${d.id}">${esc(d.title)}</a></td>
+      <td>${badge(d.severity)}</td><td>${badge(d.status)}</td>
+      <td class="small">${defectBuildsCell(d)}</td>
+    </tr>`).join("");
+
   return `
     ${pageHead([{ label: "Releases", href: "#/releases" }, { label: r.code }],
       `<span class="code-inline">${esc(r.code)}</span>${esc(r.name)}`,
       actBtn("Edit", "edit-release", r.id) + actBtn("Delete", "del-release", r.id) + actBtn("+ Build", "add-build", null, `data-sys="${r.systemId || ""}" data-rel="${r.id}"`, false),
       `${badge(r.status)} ${sys ? chip("systems", sys) : ""} ${dec ? chip("decisions", dec) : ""}
-       <span class="faint mono small">target ${esc(r.targetDate || "—")}${r.releasedDate ? ` · released ${esc(r.releasedDate)}` : ""}${r.fixVersion ? ` · Jira Fix Version ${esc(r.fixVersion)}` : ""}</span>`)}
-    ${r.description ? panel("Scope", `<p style="margin:0;white-space:pre-wrap">${esc(r.description)}</p>`) : ""}
+       <span class="faint mono small">target ${esc(r.targetDate || "—")}${marginTxt}${r.releasedDate ? ` · released ${esc(r.releasedDate)}` : ""}${r.fixVersion ? ` · Jira Fix Version ${esc(r.fixVersion)}` : ""}</span>`)}
+    <div class="kpi-row">
+      <div class="kpi" style="--kpi-accent:var(--purple)"><div class="kpi-label">Release Candidate</div><div class="kpi-value" style="font-size:22px">${cand ? `<a class="build-tag" style="font-size:20px" href="#/builds/${cand.id}">⎇ ${esc(cand.label)}</a>` : "—"}</div><div class="kpi-foot">${cand ? `${badge(cand.status)} newest non-rejected build in ${esc(r.code)}` : "add a build to this release"}</div></div>
+      <div class="kpi" style="--kpi-accent:var(--amber)"><div class="kpi-label">Run On Candidate</div><div class="kpi-value">${onCand}<small>/${rows.length}</small></div><div class="kpi-foot">${counts.pass} pass · ${counts.fail} fail · ${counts.waived} waived</div></div>
+      <div class="kpi" style="--kpi-accent:var(--blue)"><div class="kpi-label">Carried Forward</div><div class="kpi-value">${carried}</div><div class="kpi-foot">latest result from an older build · ${never} never run</div></div>
+      <div class="kpi" style="--kpi-accent:var(--green)"><div class="kpi-label">Exit Criteria</div><div class="kpi-value">${exitMet}<small>/${exit.length}</small></div><div class="kpi-foot">${blocking} open Critical/Major defect${blocking === 1 ? "" : "s"}</div></div>
+    </div>
+    ${cand ? `<div style="margin-bottom:14px" title="Results measured on ${esc(cand.label)}; grey = not yet run on it">${progressMeter(counts)}</div>` : ""}
+    ${panel(`Cases Against ${cand ? `⎇ ${esc(cand.label)}` : "the Release Candidate"}`, caseRows
+      ? `<div class="table-scroll"><table class="data"><thead><tr><th>Case</th><th>Title</th><th>On the candidate</th><th>Latest result (any build)</th></tr></thead><tbody>${caseRows}</tbody></table></div>`
+      : emptyMsg(sys ? "This system has no active test cases." : "Assign this release to a system to see its scope."), `<span class="faint small">scope: active cases of ${sys ? esc(sys.code) : "the system"}</span>`, true)}
+    <div class="grid-2">
+      <div>
+        ${panel("Requirements", reqs.length ? `${reqStatusBar(reqs)}${olderOnly.length
+          ? `<div class="small" style="margin-top:10px">Verified, but by results not measured on ${cand ? esc(cand.label) : "the candidate"} — re-run to confirm on the candidate:</div><div style="margin-top:6px">${chips("requirements", olderOnly)}</div>` : ""}`
+          : `<span class="faint small">No requirements traced to this system.</span>`)}
+        ${panel("Exit Criteria", renderCritList(exit), actBtn("+ Add", "add-crit-exit", r.id, `data-parent="release"`), true)}
+      </div>
+      <div>
+        ${panel(`Open Defects — ${sys ? esc(sys.code) : "system"}`, defRows
+          ? `<div class="table-scroll"><table class="data"><thead><tr><th>Defect</th><th>Title</th><th>Severity</th><th>Status</th><th>Builds</th></tr></thead><tbody>${defRows}</tbody></table></div>`
+          : emptyMsg("No open defects against this system."), "", true)}
+        ${r.description ? panel("Scope", `<p style="margin:0;white-space:pre-wrap">${esc(r.description)}</p>`) : ""}
+      </div>
+    </div>
     ${panel(`Builds in ${r.code}`, builds.length
       ? `<div class="table-scroll"><table class="data">${buildHead(false)}<tbody>${buildRows(builds, false)}</tbody></table></div>`
       : emptyMsg("No builds in this release yet — add the first one."), "", true)}
     ${auditPanel(r.id)}`;
 };
 
-Views.buildDetail = function (id) {
+/* Per-case comparison of one build against another build of the same system. */
+function buildComparePanel(b, params) {
+  const stream = Store.buildsOf(b.systemId).filter(x => x.id !== b.id && x.status !== "Rejected");
+  if (!stream.length) return "";
+  const vsId = params && params.get("vs");
+  const other = (vsId && stream.find(x => x.id === vsId)) || Store.previousBuild(b) || stream[0];
+  const c = Store.compareBuilds(b.id, other.id);
+  const item = x => `<span class="cmp-item">${codeLink("cases", x.tc)} <span class="faint">${x.a ? esc(x.a.result) : "—"} → ${x.b ? esc(x.b.result) : "not run"}</span></span>`;
+  const group = (title, cls, list, note) => list.length ? `<div class="cmp-group ${cls}"><div class="cmp-title">${title} <span class="mono">${list.length}</span>${note ? ` <span class="faint small">${note}</span>` : ""}</div>${list.map(item).join("")}</div>` : "";
+  const picks = stream.map(x => `<a class="${x.id === other.id ? "active" : ""}" href="#/builds/${b.id}?vs=${x.id}">${esc(x.label)}</a>`).join("");
+  const body = group("Regressed", "bad", c.regressed, "passed before, fails here") + group("Fixed", "ok", c.fixed, "failed before, passes here") +
+    group("Still failing", "bad", c.stillFailing) + group("Not re-run on this build", "", c.notRerun, `had a result on ${esc(other.label)}`) +
+    group("New on this build", "", c.newOnB, `no result on ${esc(other.label)}`) + group("Other changes", "", c.other);
+  return panel(`Compared With ⎇ ${esc(other.label)}`,
+    `${body || `<span class="faint small">No differences in results between these builds.</span>`}
+     <div class="faint small" style="margin-top:8px">${c.stillPassing.length} case${c.stillPassing.length === 1 ? "" : "s"} passing on both. Latest result per case on each build.</div>`,
+    `<span class="gantt-zoom cmp-picks">${picks}</span>`);
+}
+
+Views.buildDetail = function (id, params) {
   const b = Store.get("builds", id);
   if (!b) return notFound("Build");
   const sys = b.systemId ? Store.get("systems", b.systemId) : null;
@@ -203,6 +273,7 @@ Views.buildDetail = function (id) {
     </tr>`;
   }).join("");
   const sessions = Store.all("testRuns").filter(t => t.buildId === id);
+  const fixedHere = Store.all("defects").filter(d => d.fixedInBuildId === id);
   return `
     ${pageHead([{ label: "Releases", href: "#/releases" }, ...(rel ? [{ label: rel.code, href: `#/releases/${rel.id}` }] : []), { label: b.code }],
       `<span class="code-inline">${esc(b.code)}</span>⎇ ${esc(b.label)}`,
@@ -218,6 +289,8 @@ Views.buildDetail = function (id) {
     </div>
     ${run ? `<div style="margin-bottom:14px">${progressMeter(counts)}</div>` : ""}
     ${b.description ? panel("Change Notes", `<p style="margin:0;white-space:pre-wrap">${esc(b.description)}</p>`) : ""}
+    ${buildComparePanel(b, params)}
+    ${fixedHere.length ? panel("Defects Fixed In This Build", fixedHere.map(d => `<div style="margin-bottom:5px">${chip("defects", d)} ${badge(d.severity)} ${badge(d.status)}</div>`).join("")) : ""}
     ${panel("Results On This Build", rows
       ? `<div class="table-scroll"><table class="data"><thead><tr><th>Case</th><th>Title</th><th>Component</th><th>Latest result here</th><th>Date</th><th>Operator</th><th>Measured</th></tr></thead><tbody>${rows}</tbody></table></div>`
       : emptyMsg("No results recorded on this build yet."), "", true)}

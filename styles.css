@@ -1566,6 +1566,13 @@ a.build-tag:hover { color: var(--ink); text-decoration: none; }
 .rel-sys-head > div:first-child a { color: var(--ink); }
 .rel-sys-head .inline-actions { margin-left: auto; }
 .rel-current { font-size: 12px; color: var(--ink-dim); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.retest-flag { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--purple); border: 1px solid currentColor; border-radius: 9px; padding: 0 6px; white-space: nowrap; }
+.cmp-group { padding: 6px 0 8px; border-bottom: 1px solid var(--line-soft); display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; }
+.cmp-group:last-of-type { border-bottom: none; }
+.cmp-title { flex-basis: 100%; font-family: var(--disp); font-size: 13px; letter-spacing: 1px; text-transform: uppercase; color: var(--ink-dim); }
+.cmp-group.bad .cmp-title { color: var(--red); }
+.cmp-group.ok .cmp-title { color: var(--green); }
+.cmp-item { font-size: 12px; white-space: nowrap; }
 
 /* ---------- regression scope ---------- */
 .scope-line { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }

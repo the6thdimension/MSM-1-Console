@@ -140,6 +140,21 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
     assert.match(await page.locator('#view').textContent(),/Results On This Build[^]*TC-007/i);
     console.log('PASS releases and builds: add build, run defaults to it, build page shows the result');
 
+    await page.evaluate(()=>App.go('#/releases/rel-1'));
+    assert.match(await page.locator('#view').textContent(),/Run On Candidate[^]*Carried Forward[^]*Exit Criteria/);
+    assert.ok(await page.locator('#view .crit').count()>=3,'release exit criteria listed');
+    await page.evaluate(()=>App.go('#/builds/bld-3'));
+    assert.match(await page.locator('#view').textContent(),/Compared With ⎇ 0\.9\.0[^]*Not re-run on this build/i);
+    await page.evaluate(()=>App.go('#/defects/def-4'));
+    const unchanged=await page.evaluate(()=>JSON.stringify(Store.get('defects','def-4')));
+    await page.locator('[data-act="defect-verify"]').click();
+    await page.locator('#confirm-yes').waitFor();
+    assert.equal(await page.evaluate(()=>JSON.stringify(Store.get('defects','def-4'))),unchanged,'nothing changes before confirming');
+    await page.locator('#confirm-yes').click();
+    await page.waitForFunction(()=>Store.get('defects','def-4').status==='Closed');
+    assert.equal(await page.evaluate(()=>Store.get('defects','def-4').verifiedInBuildId),'bld-3');
+    console.log('PASS release readiness, build comparison, defect verify-and-close');
+
     await page.evaluate(()=>App.go('#/requirements'));
     await page.locator('#scope-select').selectOption('sys-3');
     await page.locator('.scope-banner').waitFor();

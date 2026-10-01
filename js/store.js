@@ -14,6 +14,9 @@ const CODE_PREFIX = {
 
 const CODE_PAD = { systems: 2, components: 2, procedures: 2, plans: 2, resources: 2, decisions: 2, events: 2, requirements: 3, cases: 3, runs: 3, risks: 3, criteria: 3, mitigations: 3, notes: 3, defects: 3, documents: 2, testRuns: 3, releases: 2, builds: 3 };
 
+/* Which collection a criterion's parentType points into. */
+const CRITERIA_PARENT = { procedure: "procedures", plan: "plans", release: "releases" };
+
 /* Case lifecycle implied by a case's latest run result. */
 const RUN_CASE_STATUS = { Pass: 'Complete', Fail: 'In Progress', 'In Progress': 'In Progress', Blocked: 'Blocked', Waived: 'Complete', 'Review for Removal': 'Draft' };
 /* Results that close out a case inside a test run (Blocked / In Progress do not). */
@@ -376,10 +379,14 @@ const Store = {
       db.cases.forEach(tc => tc.resourceIds = (tc.resourceIds || []).filter(x => x !== id));
     }
     // Builds outlive a deleted release; results outlive a deleted build (they become "build not recorded").
-    if (coll === "releases") (db.builds || []).forEach(b => { if (b.releaseId === id) b.releaseId = ""; });
+    if (coll === "releases") {
+      (db.builds || []).forEach(b => { if (b.releaseId === id) b.releaseId = ""; });
+      db.criteria = db.criteria.filter(c => !(c.parentType === "release" && c.parentId === id));
+    }
     if (coll === "builds") {
       db.runs.forEach(r => { if (r.buildId === id) r.buildId = ""; });
       (db.testRuns || []).forEach(t => { if (t.buildId === id) t.buildId = ""; });
+      (db.defects || []).forEach(d => { for (const k of ["foundInBuildId", "fixedInBuildId", "verifiedInBuildId"]) if (d[k] === id) d[k] = ""; });
     }
   },
 
@@ -446,7 +453,7 @@ const Store = {
       case "components": return r.systemId || "";
       case "cases": return this.caseSystemId(r);
       case "runs": { const tc = this.get("cases", r.caseId); return tc ? this.caseSystemId(tc) : ""; }
-      case "criteria": { const pc = r.parentType === "plan" ? "plans" : "procedures"; return this.ownerOf(pc, this.get(pc, r.parentId)); }
+      case "criteria": { const pc = CRITERIA_PARENT[r.parentType] || "procedures"; return this.ownerOf(pc, this.get(pc, r.parentId)); }
       case "defects": { if (r.systemId) return r.systemId; const c = this.get("components", r.componentId); return c ? c.systemId : ""; }
       case "plans": return r.systemId || r.regressionSystemId || "";
       default: return r.systemId || "";
@@ -618,6 +625,80 @@ const Store = {
     const out = new Map();
     for (const r of this.runsOfBuild(buildId).sort((a, b) => this.compareRuns(a, b))) if (!out.has(r.caseId)) out.set(r.caseId, r);
     return out;
+  },
+  /* x is the same build as y or a later one in the same system's stream. */
+  buildAtLeast(x, y) { return !!(x && y && x.systemId === y.systemId && this.buildOrder(x, y) >= 0); },
+  /* The next older build of the same system that was not rejected. */
+  previousBuild(b) {
+    return b && b.systemId ? this.buildsOf(b.systemId).find(x => x.id !== b.id && x.status !== "Rejected" && this.buildOrder(x, b) < 0) || null : null;
+  },
+  /* The build a release is converging on: its newest build that was not rejected. */
+  releaseCandidate(relId) { return this.buildsOfRelease(relId).find(b => b.status !== "Rejected") || null; },
+  /* Per-case comparison of the latest result on build b against build a. Pass and Waived
+     count as passing; anything that is neither passing nor Fail lands in `other`. */
+  compareBuilds(bId, aId) {
+    const rb = this.buildResults(bId), ra = this.buildResults(aId);
+    const out = { regressed: [], fixed: [], stillFailing: [], stillPassing: [], notRerun: [], newOnB: [], other: [] };
+    const pass = r => r && ["Pass", "Waived"].includes(r.result), fail = r => r && r.result === "Fail";
+    for (const caseId of new Set([...rb.keys(), ...ra.keys()])) {
+      const tc = this.get("cases", caseId);
+      if (!tc) continue;
+      const a = ra.get(caseId) || null, b = rb.get(caseId) || null, item = { tc, a, b };
+      if (!b) out.notRerun.push(item);
+      else if (!a) out.newOnB.push(item);
+      else if (pass(a) && fail(b)) out.regressed.push(item);
+      else if (fail(a) && pass(b)) out.fixed.push(item);
+      else if (fail(a) && fail(b)) out.stillFailing.push(item);
+      else if (pass(a) && pass(b)) out.stillPassing.push(item);
+      else out.other.push(item);
+    }
+    for (const k of Object.keys(out)) out[k].sort((x, y) => this.byCodeOrder(x.tc, y.tc));
+    return out;
+  },
+  /* Retest prompts for an open defect — proposals only; nothing changes until the user confirms.
+     fixReady: the build holding the fix (or a later one) is now the system's current build, the
+       defect is not yet Ready for Retest, and no passing retest has been found.
+     passedOn: a linked case's latest result is a Pass measured on the fix build or later; with no
+       fix build, on a build later than the one it was found in; with neither, dated after it opened. */
+  defectRetest(d) {
+    if (!d || !this.defectIsOpen(d)) return null;
+    const fix = d.fixedInBuildId ? this.get("builds", d.fixedInBuildId) : null;
+    const found = d.foundInBuildId ? this.get("builds", d.foundInBuildId) : null;
+    const sys = (fix || found || {}).systemId || this.ownerOf("defects", d);
+    const cur = sys ? this.currentBuild(sys) : null;
+    const fixReady = fix && cur && this.buildAtLeast(cur, fix) && d.status !== "Ready for Retest" ? cur : null;
+    let passedOn = null;
+    for (const caseId of d.caseIds || []) {
+      const r = this.latestRun(caseId);
+      if (!r || r.result !== "Pass") continue;
+      const b = r.buildId ? this.get("builds", r.buildId) : null;
+      const later = fix ? this.buildAtLeast(b, fix)
+        : found ? !!(b && b.systemId === found.systemId && this.buildOrder(b, found) > 0)
+        : (r.date || "") > (d.opened || "");
+      if (later) { passedOn = { tc: this.get("cases", caseId), run: r, build: b }; break; }
+    }
+    // Once a retest has passed, "ready to retest" is moot; only the verify prompt remains.
+    return fixReady || passedOn ? { fixReady: passedOn ? null : fixReady, passedOn, fix, found } : null;
+  },
+  /* Everything the release readiness page needs, as records; the page does the counting.
+     Scope is the system's active cases (the same scope as a full regression). */
+  releaseReadiness(relId) {
+    const rel = this.get("releases", relId);
+    if (!rel) return null;
+    const cand = this.releaseCandidate(relId);
+    const scope = rel.systemId ? this.regressionScope(rel.systemId) : [];
+    const onCand = cand ? this.buildResults(cand.id) : new Map();
+    const rows = scope.map(tc => ({ tc, latest: this.latestRun(tc.id), here: onCand.get(tc.id) || null }));
+    const scopeIds = new Set(scope.map(tc => tc.id));
+    const compIds = new Set(rel.systemId ? this.componentsOf(rel.systemId).map(c => c.id) : []);
+    const reqs = this.all("requirements").filter(r => (rel.systemId && r.systemId === rel.systemId) ||
+      (r.componentIds || []).some(c => compIds.has(c)) || this.casesOfRequirement(r.id).some(tc => scopeIds.has(tc.id)));
+    // Verified, but at least one verifying case's latest result was not measured on the candidate.
+    const olderOnly = cand ? reqs.filter(r => this.reqStatus(r.id) === "verified" &&
+      this.casesOfRequirement(r.id).some(tc => tc.status !== "Retired" && !onCand.has(tc.id))) : [];
+    const defects = this.openDefects().filter(d => rel.systemId && this.ownerOf("defects", d) === rel.systemId);
+    return { rel, cand, rows, reqs, olderOnly, defects, exit: this.criteriaOf(relId, "exit"),
+      decision: rel.decisionId ? this.get("decisions", rel.decisionId) : null };
   },
 
   plansOfDecision(decId) { return this.all("plans").filter(p => p.decisionId === decId); },

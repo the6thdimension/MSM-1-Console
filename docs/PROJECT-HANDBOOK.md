@@ -111,14 +111,14 @@ The tables below describe the application's known fields, not a strict schema.
 | `components` | `id`, `code`, `systemId`, optional `parentComponentId` (subcomponent link, any depth, same system), `name`, `description` |
 | `requirements` | `id`, `code`, `title`, `text`, `type`, `priority`, `method`, `measure`, `threshold`, `objective`, `componentIds[]`, `extKey`, optional `reqClass` (`System` / `PSPEC` / `SW`; absent = System), optional `derivedFromIds[]` (parent requirements it flows down from) |
 | `procedures` | `id`, `code`, `title`, `description`, `steps[]` of strings |
-| `criteria` | `id`, `code`, `parentType` (`procedure`/`plan`), `parentId`, `kind` (`entry`/`exit`), `text`, `status`; old records may have `procedureId` |
+| `criteria` | `id`, `code`, `parentType` (`procedure`/`plan`/`release`), `parentId`, `kind` (`entry`/`exit`), `text`, `status`; old records may have `procedureId` |
 | `cases` | `id`, `code`, `componentId` and/or `systemId` (blank component = system-level case), `title`, `objective`, `requirementIds[]`, `procedureId`, `resourceIds[]`, `priority`, `status` (adds `Retired`), `venue`, `testType`, `extKey`, `extLinks[]`, `removalNominated`, `reviewDisposition`, `preconditions`, `testData`, `expectedResults`, `passFailCriteria` |
 | `plans` | `id`, `code`, `name`, `description`, `phase`, `status`, `start`, `end`, `caseIds[]`, `decisionId`, `extKey`, `extLinks[]`, optional `regressionSystemId`; old `decision` free text migrates |
 | `runs` | `id`, `code`, `caseId`, optional `planId`, optional `testRunId`, optional `buildId` (the build the result was measured on), `date`, `operator`, `result` (adds `Waived`, `Review for Removal`), `measured`, `evidence`, `notes`, `extKey` |
 | `testRuns` | `id`, `code`, `name`, `operator`, `status` (free text; app uses Active/Complete/Aborted), `planId`, `systemId`, `componentId` (optional scope root), `caseIds[]` (scope frozen at start), optional `buildId` (build under test), `notes`, `createdAt`, `startedAt`, `completedAt` (date-time text) |
 | `releases` | `id`, `code` (REL-##), `systemId` (each system has its own releases), `name`, `status` (Planning / In Test / Release Candidate / Released / Cancelled), `targetDate`, `releasedDate`, optional `decisionId`, optional `fixVersion` (Jira Fix Version), `description` |
 | `builds` | `id`, `code` (BLD-###), `systemId` (each system has its own build stream), optional `releaseId` (a release of the same system), `label` (version string), `status` (Received / Smoke Passed / Under Test / Accepted / Rejected / Shipped), `received` date, optional `url` (artifact or CI link), optional `cycle` (Zephyr test cycle), `description` (change notes) |
-| `defects` | `id`, `code`, `title`, `description`, `severity`, `status`, `componentId`, `caseIds[]`, `runId`, `owner`, `opened`, `closed`, optional `extLinks[]` |
+| `defects` | `id`, `code`, `title`, `description`, `severity`, `status`, `componentId`, `caseIds[]`, `runId`, `owner`, `opened`, `closed`, optional `extLinks[]`, optional `foundInBuildId`, `fixedInBuildId`, `verifiedInBuildId` |
 | `risks` | `id`, `code`, `title`, `description`, `category`, `status`, `owner`, likelihood/impact, initial and residual likelihood/impact, `relatedRequirementIds[]`, `relatedCaseIds[]`, nested `mitigations[]` |
 | `resources` | `id`, `code`, `name`, `type`, `description`, `vvaRequired`, `intendedUse`, `owner`, `authority`, `verification`, `validation`, `accreditation`, `accDate`, `accScope`, `artifacts` booleans |
 | `decisions` | `id`, `code`, `title`, `description`, `status`, `date`, `authority`, `requirementIds[]` |
@@ -163,7 +163,8 @@ Compatibility must retain both forms and validate counters against actual record
 | `#/documents` | External references and embedded files, related-code links |
 | `#/interchange` | CSV conversions, full JSON transfer, Jira URL setting, blank program (always whole-program, regardless of scope) |
 | `#/ownership` | Ownership overview per system; program-level records with reviewed owner suggestions; assign selected or accept suggestions |
-| `#/releases`, `#/releases/:id`, `#/builds/:id` | Per system: current build, releases (status, target, latest build, decision, Jira Fix Version) and the build stream with how many active cases have a result on each build. A build page shows results on that build, what has not been run on it yet, its change notes, sessions run against it, and links to the newer and older builds. System pages carry a Releases & Builds panel; system cards show the current build |
+| `#/releases`, `#/releases/:id`, `#/builds/:id` | Per system: current build, releases (status, target, latest build, decision, Jira Fix Version) and the build stream with how many active cases have a result on each build. A **release page is its readiness view**: release candidate, cases run on it (pass/fail), results carried forward from older builds, never-run cases, a per-case table, requirement rollup with the requirements verified only by older-build results, release exit criteria, open defects of the system with their builds, and the margin between the target date and the linked decision. A build page shows results on that build, a **comparison with another build** (default: the previous non-rejected one; `?vs=` picks another) listing regressed, fixed, still failing, not re-run and new cases, defects fixed in it, what has not been run on it yet, change notes, sessions run against it, and links to the newer and older builds. System pages carry a Releases & Builds panel; system cards show the current build |
+| `#/defects/:id` (builds) | Found / fixed / verified build per defect (also a Builds column in the register), with retest proposals: "ready to retest" and "verify and close", each applied only after the user confirms |
 | `#/sitrep`, `#/decisions/:id/report` | Print-oriented weekly program and decision package reports |
 | `#/search?q=...` | Case-insensitive substring search across configured fields, capped at 40 hits |
 
@@ -240,6 +241,27 @@ Compatibility must retain both forms and validate counters against actual record
   recorded" once the system has builds; nothing is shown for systems without builds,
   and old results are never assigned a build automatically. Deleting a build keeps its
   results (they lose only the build link); deleting a release keeps its builds.
+- Release readiness: the **release candidate** is the release's newest build that was
+  not rejected, even if it has not been tested yet (then nothing is "run on
+  candidate"). Scope is the system's active (non-Retired) cases, the same scope as a
+  full regression. A case's result "on the candidate" is its latest run on that build;
+  otherwise its latest result on any build is shown as carried forward. Requirements
+  in view are those owned by the system, traced to its components, or verified by its
+  scope cases; "verified only by older-build results" means the rollup says verified
+  but at least one non-Retired verifying case has no result on the candidate.
+  Release exit criteria use the ordinary criteria records (`parentType: release`) and
+  are deleted with their release. Readiness is informational; it does not set the
+  release's status.
+- Build comparison uses each case's latest result on each of the two builds. Pass and
+  Waived count as passing; regressed = passing → Fail, fixed = Fail → passing.
+- Defect retest proposals (`Store.defectRetest`) never change a defect on their own.
+  "Ready to retest" appears when the fix build (or a later one) is the system's current
+  build and the defect is not already Ready for Retest. "Verify and close" appears when
+  a linked case's latest result is a Pass measured on the fix build or later — or, with
+  no fix build, on a build later than the one it was found in, or with neither, dated
+  after the defect opened. A pass on the same build it was found in is not a retest.
+  Confirming closes the defect with today's date and records the verifying build.
+  Filing a defect from a run pre-fills "found in" with that run's build.
 - Closed and Deferred defects are excluded from the “open” calculation.
 - Decision readiness is the percentage of linked requirements currently verified;
   no linked requirements returns no readiness value. It is not an approval gate.

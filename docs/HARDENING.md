@@ -98,7 +98,11 @@ a database without them loads with both as empty lists, as `testRuns` did. The
 optional `buildId` on runs and test run sessions is never added during import and
 never inferred: existing results stay "build not recorded" until someone edits them.
 When present, every build reference must resolve, statuses must be known values,
-and a build's release must belong to the same system. Older releases of this app do
+and a build's release must belong to the same system. Defects' optional
+`foundInBuildId` / `fixedInBuildId` / `verifiedInBuildId` follow the same rule and
+are never added on import. Criteria accept `parentType: release`; an older app would
+reject such a criterion, which is consistent with new-version exports not being
+guaranteed to import into an old app. Older releases of this app do
 not know these collections; per the compatibility contract, new-version exports are
 not guaranteed to import into an old app.
 
