@@ -598,6 +598,40 @@ const Store = {
     return "Untested";
   },
 
+  /* ---------- case specification health ----------
+     A case is fully specified when it states what it is for, what result to expect, how to
+     judge pass/fail, how to run it, and what it verifies. Advisory only: nothing is blocked. */
+  caseSpec(tc) {
+    const checks = [
+      { key: "objective", label: "Objective", ok: !!(tc.objective || "").trim() },
+      { key: "expectedResults", label: "Expected results", ok: !!(tc.expectedResults || "").trim() },
+      { key: "passFailCriteria", label: "Pass/fail criteria", ok: !!(tc.passFailCriteria || "").trim() },
+      { key: "procedureId", label: "Procedure", ok: !!tc.procedureId },
+      { key: "requirementIds", label: "Verifies a requirement", ok: (tc.requirementIds || []).length > 0 }
+    ];
+    return { checks, done: checks.filter(c => c.ok).length, total: checks.length, missing: checks.filter(c => !c.ok).map(c => c.label) };
+  },
+  /* Specification fields edited after the case's latest passing result, read from the change
+     log. null when the case has no passing result or nothing relevant changed since. */
+  SPEC_FIELDS: ["objective", "preconditions", "testData", "expectedResults", "passFailCriteria", "procedureId", "requirementIds"],
+  caseChangedSincePass(tc) {
+    const pass = this.runsOf(tc.id).find(r => r.result === "Pass" || r.result === "Waived");
+    if (!pass) return null;
+    const since = pass.recordedAt || `${pass.date || ""}T23:59:59.999Z`;
+    const fields = new Set(), at = [];
+    for (const a of this.auditOf(tc.id)) {
+      if (a.action !== "updated" || !a.changes || (a.ts || "") <= since) continue;
+      const hit = Object.keys(a.changes).filter(k => this.SPEC_FIELDS.includes(k));
+      if (hit.length) { hit.forEach(k => fields.add(k)); at.push(a.ts); }
+    }
+    return fields.size ? { run: pass, fields: [...fields], last: at.sort().pop() } : null;
+  },
+  /* Whole days since a YYYY-MM-DD date (UTC). null for a missing date. */
+  daysSince(iso) {
+    if (!iso) return null;
+    return Math.max(0, Math.floor((Date.parse(new Date().toISOString().slice(0, 10)) - Date.parse(iso.slice(0, 10))) / 86400000));
+  },
+
   /* ---------- releases and builds ----------
      Each system has its own build stream and its own releases; a build belongs to at most one
      release of the same system. A run records the build it was measured on in buildId. Build

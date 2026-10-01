@@ -175,7 +175,7 @@ function toastUndo(msg) {
 }
 
 /* ---------- modal form engine ----------
-   fields: [{ key, label, type: text|textarea|number|date|select|multicheck,
+   fields: [{ key, label, type: text|textarea|number|date|select|multicheck|note (read-only text, not submitted),
               options: [{value,label}] | [str], required, min, max, half }]
 */
 const Modal = {
@@ -185,6 +185,7 @@ const Modal = {
     values = values || {};
     const root = document.getElementById("modal-root");
     const fieldHtml = fields.map(f => {
+      if (f.type === "note") return `<div class="form-note full ${f.tone || ""}">${esc(f.text)}</div>`;
       const v = values[f.key] != null ? values[f.key] : (f.default != null ? f.default : "");
       const full = f.half ? "" : " full";
       let control = "";
@@ -239,6 +240,7 @@ const Modal = {
       e.preventDefault();
       const out = {};
       for (const f of fields) {
+        if (f.type === "note") continue;
         if (f.type === "multicheck") {
           out[f.key] = Array.from(form.querySelectorAll(`input[name="${f.key}"]:checked`)).map(i => i.value);
         } else if (f.type === "number") {

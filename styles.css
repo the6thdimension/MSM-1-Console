@@ -247,6 +247,9 @@ h1.page-title {
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
 .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 @media (max-width: 1100px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+/* Grid columns may shrink below their content's width; wide tables scroll inside instead of
+   pushing the page sideways. */
+.grid-2 > *, .grid-3 > * { min-width: 0; }
 
 /* ---------- tables ---------- */
 table.data {
@@ -1545,6 +1548,39 @@ table.trace thead th.grp a { display: block; overflow: hidden; text-overflow: el
 .cc-meta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .cc-meter { width: 110px; }
 .cc-empty { padding: 10px 14px; font-size: 12px; color: var(--ink-faint); font-style: italic; }
+.case-card.head-only .case-card-head { border-bottom: none; }
+.cc-empties { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; padding: 8px 12px; margin: -4px 0 14px; border: 1px dashed var(--line); border-radius: 6px; }
+.cc-empty-item { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+.cc-empty-item a { color: var(--ink-dim); }
+
+/* Shared case table: fixed columns so every card lines up; results right after the title. */
+table.case-table { table-layout: fixed; }
+table.case-table td { overflow-wrap: anywhere; }
+table.case-table .c-code { width: 92px; }
+table.case-table .c-result { width: 190px; }
+table.case-table .c-hist { width: 96px; }
+table.case-table .c-status { width: 116px; }
+table.case-table .c-owner { width: 150px; }
+table.case-table .c-plans { width: 92px; }
+table.case-table .c-proc { width: 88px; }
+table.case-table .c-act { width: 52px; text-align: center; }
+@media (max-width: 1000px) {
+  table.case-table .c-code { width: 74px; }
+  table.case-table .c-result { width: 138px; }
+  table.case-table .c-act { width: 40px; }
+}
+.case-age { font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); margin-top: 3px; }
+.case-age.stale { color: var(--amber); }
+.case-sigs { display: inline-flex; flex-wrap: wrap; gap: 5px; margin-left: 6px; vertical-align: 1px; }
+.sig { font-family: var(--mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: .4px; color: var(--ink-faint); border: 1px solid var(--line); border-radius: 8px; padding: 0 6px; white-space: nowrap; }
+.sig.warn { color: var(--orange); border-color: currentColor; }
+.form-note { font-size: 12px; padding: 8px 10px; border-radius: 4px; border: 1px solid var(--line); color: var(--ink-dim); }
+.form-note.warn { color: var(--orange); border-color: currentColor; background: rgba(255,139,62,.06); }
+
+/* Column priority for wide tables: col-lo drops first, col-mid next, so the columns that
+   matter stay on screen instead of scrolling sideways. Widths are the window width. */
+@media (max-width: 1250px) { .col-lo { display: none; } }
+@media (max-width: 1000px) { .col-mid { display: none; } }
 
 /* ---------- releases and builds ---------- */
 .build-tag { font-family: var(--mono); font-size: 11px; color: var(--purple); white-space: nowrap; }

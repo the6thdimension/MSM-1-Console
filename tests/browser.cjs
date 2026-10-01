@@ -53,7 +53,8 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
     await page.locator('#modal-form select[name="result"]').selectOption('Review for Removal');await page.locator('#modal-form [type="submit"]').click();
     await page.waitForFunction(id=>Store.testRunResult(id,'tc-8')?.result==='Review for Removal',trId);
     assert.equal(await page.evaluate(()=>location.hash),filtered,'filter survives recording');
-    assert.equal(await page.evaluate(()=>document.getElementById('trc-tc-8')?.classList.contains('flash')),true,'recorded row restored into view');
+    // The stored result exists before the page re-renders; wait for the render itself.
+    await page.waitForFunction(()=>document.getElementById('trc-tc-8')?.classList.contains('flash'));
     assert.equal(await page.evaluate(()=>Store.get('cases','tc-8').removalNominated),true);
     await page.locator('#trc-tc-9 a',{hasText:'Execute'}).click();await page.waitForFunction(()=>location.hash.startsWith('#/execute/tc-9?tr='));
     await page.locator('#exec-result').selectOption('Waived');await page.locator('[data-act="exec-save"]').click();
@@ -72,6 +73,17 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
     const ct=await page.evaluate(()=>Store.get('testRuns',location.hash.split('/')[2]));
     assert.equal(ct.componentId,'cmp-5');assert.ok(ct.caseIds.includes('tc-15'),'component test includes nested subcomponent cases');
     console.log('PASS component cards and component test from component page');
+
+    // Cases page: record from a row; a Fail offers a pre-filled defect, as Execute does.
+    await page.evaluate(()=>App.go('#/cases'));
+    await page.locator('[data-act="record-run-row"][data-id="tc-16"]').click();
+    await page.locator('#modal-form select[name="result"]').selectOption('Fail');
+    await page.locator('#modal-form [type="submit"]').click();
+    await page.locator('.modal h2',{hasText:'New Defect'}).waitFor();
+    assert.equal(await page.locator('#modal-form select[name="runId"]').inputValue(),await page.evaluate(()=>Store.latestRun('tc-16').id),'defect is linked to the failing run');
+    await page.locator('.modal [data-close]').first().click();
+    await page.waitForFunction(()=>document.getElementById('case-row-tc-16')?.classList.contains('flash'));
+    console.log('PASS record from a case row; Fail offers a linked defect');
 
     await page.evaluate(()=>App.go('#/requirements/req-3'));
     await page.locator('.page-actions [data-act="add-requirement"][data-cls="SW"]').click();

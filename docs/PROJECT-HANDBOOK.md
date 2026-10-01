@@ -151,7 +151,7 @@ Compatibility must retain both forms and validate counters against actual record
 | `#/dashboard` | Coverage, verification, results, risks, defects, plan progress, snapshot trends, links to work |
 | `#/systems`, `#/components/:id` | System/component/subcomponent tree, derived component health, regression scope panel and ▶ Full Regression; component pages add a component test scope panel, its test history, and ▶ Component Test |
 | `#/requirements?class=&q=` | Register in one section per class (System Requirements, PSPECs, SW Requirements) with class tabs and counts, a per-class status bar and add button, rows grouped by owning system, ↑ parent / ↓ derived flow-down chips, text filter. Detail adds a Requirement Flow-Down panel and **+ Derived PSPEC / + Derived SW Req** buttons |
-| `#/cases` | Cases as component cards per system in tree order (subcomponent cards indented with a dashed purple rail and level badge; a system-level card per system), filters, bulk changes, review queue; `?view=table` gives the flat table |
+| `#/cases?attn=` | Cases as component cards per system in tree order (subcomponent cards indented with a dashed purple rail and level badge; a system-level card per system; components with no cases collapse into one "No cases yet" line per system). Every card uses the same fixed columns so they line up: case, title (with signals), latest result (with its age in days and build), history, status, plans, procedure and a ● record button; plans/procedure drop below 1250 px window width and history/status below 1000 px. Signals under a title: Review for Removal, "spec n/5" (amber when the case is Ready), "changed since pass". The "Needs attention" filter lists incomplete specs, cases with no result in 30+ days or never run, and cases changed since their last pass. Filters, bulk changes, review queue; `?view=table` gives the flat table |
 | `#/trace?class=` | One requirement-by-case grid per class, each limited to the cases that verify its rows and grouped by system; class, system and gaps filters |
 | `#/procedures` | Procedure steps and entry/exit criteria, readiness strip, related cases |
 | `#/plans` | Case campaigns, dates, phase criteria, result rollup and pace estimate |
@@ -244,6 +244,14 @@ Compatibility must retain both forms and validate counters against actual record
   recorded" once the system has builds; nothing is shown for systems without builds,
   and old results are never assigned a build automatically. Deleting a build keeps its
   results (they lose only the build link); deleting a release keeps its builds.
+- Case specification (`Store.caseSpec`): five advisory checks — objective, expected
+  results, pass/fail criteria, procedure, and at least one verified requirement.
+  Nothing is blocked; the case page and the record form show what is missing.
+  "Changed since pass" (`Store.caseChangedSincePass`) reads the change log for edits
+  to objective, preconditions, test data, expected results, pass/fail criteria,
+  procedure or requirements recorded after the latest Pass/Waived result (its
+  `recordedAt`, else the end of its date). Recording a Fail from the Record Run form
+  offers a pre-filled defect, as Execute mode does.
 - Release readiness: the **release candidate** is the release's newest build that was
   not rejected, even if it has not been tested yet (then nothing is "run on
   candidate"). Scope is the system's active (non-Retired) cases, the same scope as a

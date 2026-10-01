@@ -2,9 +2,69 @@
    Test cases, case detail, execute mode, runs and bulk case actions.
    Page module: adds to Views and Actions; loaded after js/views.js.
    ============================================================ */
+/* ---------- shared case table ----------
+   Every card on the cases page (and the flat view) uses these columns, so tables line up
+   from card to card. The latest result sits right after the title; col-mid / col-lo columns
+   drop away on narrower screens so the result never scrolls out of view. */
+function caseHead(showOwner) {
+  return `<thead><tr><th class="bulk-cell"></th><th class="c-code">Case</th><th class="c-title">Title</th><th class="c-result">Latest result</th>
+    <th class="c-hist col-mid">History</th><th class="c-status col-mid">Status</th>${showOwner ? `<th class="c-owner col-lo">Component</th>` : ""}
+    <th class="c-plans col-lo">Plans</th><th class="c-proc col-lo">Procedure</th><th class="c-act" title="Record a result">Rec</th></tr></thead>`;
+}
+
+/* Latest result with how long ago it was measured and on which build. Older than 30 days reads amber. */
+function latestResultCell(run) {
+  if (!run) return `<span class="faint small">Not run</span>`;
+  const age = Store.daysSince(run.date), tag = buildTag(run);
+  return `${runBadge(run)}<div class="case-age${age != null && age > 30 ? " stale" : ""}">${age == null ? "" : age === 0 ? "today" : `${age} d ago`}${tag ? ` · ${tag}` : ""}</div>`;
+}
+
+/* Small advisory signals under a case title: removal review, incomplete spec, changed since pass. */
+function caseSignals(tc) {
+  const out = [];
+  if (tc.removalNominated) out.push(badge("Review for Removal"));
+  if (tc.status !== "Retired") {
+    const s = Store.caseSpec(tc);
+    if (s.done < s.total) out.push(`<span class="sig${tc.status === "Ready" ? " warn" : ""}" title="Missing: ${esc(s.missing.join(", "))}${tc.status === "Ready" ? " — marked Ready anyway" : ""}">spec ${s.done}/${s.total}</span>`);
+  }
+  const ch = Store.caseChangedSincePass(tc);
+  if (ch) out.push(`<span class="sig warn" title="Edited after ${esc(ch.run.code)} passed: ${esc(ch.fields.join(", "))}">changed since pass</span>`);
+  return out.length ? `<div class="case-sigs">${out.join("")}</div>` : "";
+}
+
+function caseRowHtml(tc, showOwner) {
+  const proc = tc.procedureId ? Store.get("procedures", tc.procedureId) : null;
+  const plans = Store.plansOf(tc.id);
+  return `<tr id="case-row-${tc.id}">
+    <td class="bulk-cell"><input type="checkbox" data-bulk="${tc.id}"></td>
+    <td class="c-code">${codeLink("cases", tc)}${tc.extKey ? `<div class="faint mono" style="font-size:9.5px">${esc(tc.extKey)}</div>` : ""}</td>
+    <td class="c-title"><a href="#/cases/${tc.id}">${esc(tc.title)}</a>${caseSignals(tc)}</td>
+    <td class="c-result">${latestResultCell(Store.latestRun(tc.id))}</td>
+    <td class="c-hist col-mid">${runDots(tc.id)}</td>
+    <td class="c-status col-mid"><button class="badge-btn" data-act="cycle-case-status" data-id="${tc.id}" title="Click to cycle status">${badge(tc.status)}</button></td>
+    ${showOwner ? `<td class="c-owner col-lo">${caseOwnerChip(tc)}</td>` : ""}
+    <td class="c-plans col-lo">${plans.map(p => codeLink("plans", p)).join(" ") || `<span class="faint small">—</span>`}</td>
+    <td class="c-proc col-lo">${proc ? codeLink("procedures", proc) : `<span class="faint small">—</span>`}</td>
+    <td class="c-act">${tc.status !== "Retired" ? actBtn("●", "record-run-row", tc.id, `title="Record a result for ${esc(tc.code)}"`, true, "btn-xs") : ""}</td>
+  </tr>`;
+}
+/* Compact case row for system and component pages (no bulk select). */
+function caseRow(tc) {
+  return `<tr>
+    <td>${codeLink("cases", tc)}</td>
+    <td><a href="#/cases/${tc.id}">${esc(tc.title)}</a>${caseSignals(tc)}</td>
+    <td>${badge(tc.priority)}</td>
+    <td>${badge(tc.status)}</td>
+    <td>${latestResultCell(Store.latestRun(tc.id))}</td>
+  </tr>`;
+}
+const caseTable = (list, showOwner) =>
+  `<div class="table-scroll"><table class="data case-table">${caseHead(showOwner)}<tbody>${list.map(tc => caseRowHtml(tc, showOwner)).join("")}</tbody></table></div>`;
+
 /* One component's card on the cases page. `comp` null = the system-level card for `sys`.
-   Subcomponent cards are indented and styled differently from top-level ones. */
-function caseCard(comp, depth, direct, inSubtree, row, head, sys) {
+   Subcomponent cards are indented and styled differently from top-level ones. A component
+   whose cases all sit in its subcomponents renders as a header only. */
+function caseCard(comp, depth, direct, inSubtree, sys) {
   const nested = inSubtree - direct.length;
   const kind = comp ? (depth ? `Subcomponent · level ${depth}` : "Top-level component") : "System-level";
   const counts = resultCounts(direct.map(tc => Store.latestRun(tc.id)));
@@ -14,33 +74,27 @@ function caseCard(comp, depth, direct, inSubtree, row, head, sys) {
   const actions = comp
     ? actBtn("+ Case", "add-case", comp.id) + (Store.casesOfBranch(comp.id).some(tc => tc.status !== "Retired") ? actBtn("▶ Test", "comp-test", comp.id) : "")
     : "";
-  return `<div class="case-card ${comp ? (depth ? "sub" : "top") : "syslevel"}" style="--depth:${depth}">
+  return `<div class="case-card ${comp ? (depth ? "sub" : "top") : "syslevel"}${direct.length ? "" : " head-only"}" style="--depth:${depth}">
     <div class="case-card-head">
       <div class="cc-title">${title}
         ${badge(kind, comp ? (depth ? "b-purple" : "b-blue") : "b-grey")} ${comp ? badge(Store.componentStatus(comp.id)) : ""}
         ${comp ? componentWhy(comp.id) : ""}</div>
       <div class="cc-meta">
-        <span class="mono small">${direct.length} case${direct.length === 1 ? "" : "s"}${nested ? ` <span class="faint">· +${nested} in subcomponents</span>` : ""}</span>
+        <span class="mono small">${direct.length} case${direct.length === 1 ? "" : "s"}${nested ? ` <span class="faint">· +${nested} in subcomponents below</span>` : ""}</span>
         ${direct.length ? `<div class="cc-meter">${progressMeter(counts)}</div>` : ""}
         <span class="inline-actions">${actions}</span>
       </div>
     </div>
-    ${direct.length
-      ? `<div class="table-scroll"><table class="data">${head(false)}<tbody>${direct.map(tc => row(tc, false)).join("")}</tbody></table></div>`
-      : `<div class="cc-empty">${nested ? `No cases directly on this component — ${nested} in its subcomponents below.` : "No test cases yet."}</div>`}
+    ${direct.length ? caseTable(direct, false) : ""}
   </div>`;
 }
 
-function caseRow(tc) {
-  const run = Store.latestRun(tc.id);
-  return `<tr>
-    <td>${codeLink("cases", tc)}</td>
-    <td><a href="#/cases/${tc.id}">${esc(tc.title)}</a></td>
-    <td>${badge(tc.priority)}</td>
-    <td>${badge(tc.status)}</td>
-    <td>${runBadge(run)}</td>
-  </tr>`;
-}
+/* The "Attention" filter: advisory lists a tester works through. */
+const CASE_ATTENTION = {
+  spec: { label: "Spec incomplete", test: tc => tc.status !== "Retired" && Store.caseSpec(tc).done < Store.caseSpec(tc).total },
+  stale: { label: "No result in 30+ days (or never run)", test: tc => { if (tc.status === "Retired") return false; const r = Store.latestRun(tc.id); return !r || Store.daysSince(r.date) > 30; } },
+  changed: { label: "Changed since last pass", test: tc => !!Store.caseChangedSincePass(tc) }
+};
 
 Views.cases = function (params) {
   const compF = params.get("component") || "";
@@ -48,11 +102,13 @@ Views.cases = function (params) {
   const planF = params.get("plan") || "";
   const procF = params.get("procedure") || "";
   const reviewF = params.get("review") || "";
+  const attnF = CASE_ATTENTION[params.get("attn")] ? params.get("attn") : "";
   let cases = Scope.list("cases");
   if (compF) { const branch = Store.descendantIds(compF); cases = cases.filter(tc => branch.has(tc.componentId)); }
   if (statF) cases = cases.filter(tc => tc.status === statF);
   if (procF) cases = cases.filter(tc => tc.procedureId === procF);
   if (reviewF) cases = cases.filter(tc => tc.removalNominated);
+  if (attnF) cases = cases.filter(CASE_ATTENTION[attnF].test);
   if (planF) {
     const plan = Store.get("plans", planF);
     const ids = new Set(plan ? plan.caseIds : []);
@@ -60,51 +116,36 @@ Views.cases = function (params) {
   }
 
   const tableView = params.get("view") === "table";
-  const filtering = !!(compF || statF || planF || procF || reviewF);
-  const row = (tc, showOwner) => {
-    const proc = tc.procedureId ? Store.get("procedures", tc.procedureId) : null;
-    const plans = Store.plansOf(tc.id);
-    return `<tr>
-      <td class="bulk-cell"><input type="checkbox" data-bulk="${tc.id}"></td>
-      <td>${codeLink("cases", tc)}${tc.extKey ? `<div class="faint mono" style="font-size:9.5px">${esc(tc.extKey)}</div>` : ""}</td>
-      <td><a href="#/cases/${tc.id}">${esc(tc.title)}</a>${tc.removalNominated ? ` ${badge("Review for Removal")}` : ""}</td>
-      <td>${proc ? codeLink("procedures", proc) : `<span class="faint small">—</span>`}</td>
-      ${showOwner ? `<td>${caseOwnerChip(tc)}</td>` : ""}
-      <td>${plans.map(p => codeLink("plans", p)).join(" ") || `<span class="faint small">—</span>`}</td>
-      <td><button class="badge-btn" data-act="cycle-case-status" data-id="${tc.id}" title="Click to cycle status">${badge(tc.status)}</button></td>
-      <td>${runDots(tc.id)}</td>
-      <td>${(run => runBadge(run) + (buildTag(run) ? `<div class="small" style="margin-top:3px">${buildTag(run)}</div>` : ""))(Store.latestRun(tc.id))}</td>
-    </tr>`;
-  };
-  const head = showOwner => `<thead><tr><th class="bulk-cell"></th><th>Code</th><th>Title</th><th>Procedure</th>${showOwner ? "<th>Component</th>" : ""}<th>Plans</th><th>Status</th><th>History</th><th>Latest Run</th></tr></thead>`;
+  const filtering = !!(compF || statF || planF || procF || reviewF || attnF);
   const nominated = Scope.list("cases").filter(tc => tc.removalNominated).length;
 
-  /* Card view: one card per component in tree order; subcomponent cards nest visually. */
+  /* Card view: one card per component in tree order; subcomponent cards nest visually.
+     Components with no cases at all collapse into one line per system. */
   let body;
   if (tableView) {
-    body = panel("Catalog", cases.length
-      ? `<div class="table-scroll"><table class="data">${head(true)}<tbody>${cases.map(tc => row(tc, true)).join("")}</tbody></table></div>`
-      : emptyMsg("No test cases match the filter."), "", true);
+    body = panel("Catalog", cases.length ? caseTable(cases, true) : emptyMsg("No test cases match the filter."), "", true);
   } else {
     const shown = new Set(cases.map(tc => tc.id));
     const out = [];
     for (const s of Scope.list("systems").slice().sort(Store.byCodeOrder)) {
-      const cards = [];
+      const cards = [], empties = [];
       for (const { comp, depth } of Store.componentTree(s.id)) {
         const direct = Store.casesOf(comp.id).filter(tc => shown.has(tc.id));
         const inSubtree = Store.casesOfBranch(comp.id).filter(tc => shown.has(tc.id)).length;
-        if (filtering && !inSubtree) continue;
-        cards.push(caseCard(comp, depth, direct, inSubtree, row, head));
+        if (!inSubtree) { if (!filtering) empties.push(comp); continue; }
+        cards.push(caseCard(comp, depth, direct, inSubtree));
       }
       const sysLevel = Store.systemLevelCases(s.id).filter(tc => shown.has(tc.id));
-      if (sysLevel.length) cards.push(caseCard(null, 0, sysLevel, sysLevel.length, row, head, s));
-      if (!cards.length) continue;
+      if (sysLevel.length) cards.push(caseCard(null, 0, sysLevel, sysLevel.length, s));
+      if (!cards.length && !empties.length) continue;
       const count = Store.casesOfSystem(s.id).filter(tc => shown.has(tc.id)).length;
       out.push(`<div class="case-sys-head"><a href="#/systems/${s.id}"><span class="code">${esc(s.code)}</span> ${esc(s.name)}</a>
-        <span class="faint mono small">${count} case${count === 1 ? "" : "s"}</span></div>${cards.join("")}`);
+        <span class="faint mono small">${count} case${count === 1 ? "" : "s"}</span></div>${cards.join("")}
+        ${empties.length ? `<div class="cc-empties"><span class="faint small">No cases yet:</span> ${empties.map(c =>
+          `<span class="cc-empty-item"><a href="#/components/${c.id}"><span class="code">${esc(c.code)}</span> ${esc(c.name)}</a>${actBtn("+", "add-case", c.id, `title="Add a case to ${esc(c.code)}"`, true, "btn-xs")}</span>`).join("")}</div>` : ""}`);
     }
     const orphans = cases.filter(tc => !Store.caseSystemId(tc));
-    if (orphans.length) out.push(`<div class="case-sys-head">Unassigned</div><div class="case-card"><div class="table-scroll"><table class="data">${head(false)}<tbody>${orphans.map(tc => row(tc, false)).join("")}</tbody></table></div></div>`);
+    if (orphans.length) out.push(`<div class="case-sys-head">Unassigned</div><div class="case-card">${caseTable(orphans, false)}</div>`);
     body = out.join("") || emptyMsg(filtering ? "No test cases match the filter." : "No components yet — add systems and components first.");
   }
 
@@ -117,6 +158,7 @@ Views.cases = function (params) {
       <select data-filter="component"><option value="">All components</option>${componentOptions().map(o => `<option value="${o.value}" ${compF === o.value ? "selected" : ""}>${esc(o.label)}</option>`).join("")}</select>
       <select data-filter="status"><option value="">All statuses</option>${CASE_STATUSES.map(s => `<option ${statF === s ? "selected" : ""}>${s}</option>`).join("")}</select>
       <select data-filter="plan"><option value="">All plans</option>${Store.all("plans").map(p => `<option value="${p.id}" ${planF === p.id ? "selected" : ""}>${esc(p.code)} ${esc(p.name)}</option>`).join("")}</select>
+      <select data-filter="attn"><option value="">Needs attention: any</option>${Object.entries(CASE_ATTENTION).map(([k, a]) => `<option value="${k}" ${attnF === k ? "selected" : ""}>${esc(a.label)} (${Scope.list("cases").filter(a.test).length})</option>`).join("")}</select>
       <select data-filter="review"><option value="">All cases</option><option value="1" ${reviewF ? "selected" : ""}>Review queue — nominated for removal (${nominated})</option></select>
       <select data-filter="view"><option value="">View: component cards</option><option value="table" ${tableView ? "selected" : ""}>View: flat table</option></select>
       <label class="small faint" style="display:flex;gap:5px;align-items:center;cursor:pointer"><input type="checkbox" data-bulk-all style="accent-color:var(--amber)"> select all shown</label>
@@ -168,6 +210,10 @@ Views.caseDetail = function (id) {
   const crumbs = proc
     ? [{ label: "Procedures", href: "#/procedures" }, { label: proc.code, href: `#/procedures/${proc.id}` }, { label: tc.code }]
     : [{ label: "Test Cases", href: "#/cases" }, { label: tc.code }];
+  const spec = Store.caseSpec(tc), changed = Store.caseChangedSincePass(tc);
+  const health = (tc.status !== "Retired" && spec.done < spec.total
+      ? `<div class="ready-strip ${tc.status === "Ready" ? "nogo" : "info"}"><span class="lamp"></span>SPEC ${spec.done}/${spec.total} — MISSING: ${esc(spec.missing.join(", ").toUpperCase())}${tc.status === "Ready" ? " · MARKED READY ANYWAY" : ""}</div>` : "") +
+    (changed ? `<div class="ready-strip nogo"><span class="lamp"></span>CHANGED SINCE ${esc(changed.run.code)} PASSED ON ${esc(changed.run.date || "")}: ${esc(changed.fields.join(", "))} — RE-RUN TO CONFIRM</div>` : "");
 
   return `
     ${pageHead(
@@ -176,6 +222,7 @@ Views.caseDetail = function (id) {
       actBtn("Edit", "edit-case", tc.id) + actBtn("Delete", "del-case", tc.id) + actBtn("Assign to Plan", "assign-plan", tc.id) + actBtn("⚑ Defect", "add-defect-case", tc.id) + actBtn("● Record Run", "record-run", tc.id) +
       (proc ? `<a class="btn" href="#/execute/${tc.id}">▶ Execute</a>` : ""),
       tc.extKey ? `Issue: ${extKeyTag(tc.extKey)}` : "")}
+    ${health}
     <div class="grid-2">
       <div>
         ${panel("Objective", `<p style="margin:0">${esc(tc.objective || "")}</p>
@@ -321,7 +368,14 @@ function openRunForm(preset) {
   // The build defaults to the test run's build, else the case system's current build.
   const sysId = tc ? Store.caseSystemId(tc) : "";
   if (preset.buildId === undefined) preset = Object.assign({}, preset, { buildId: trun && trun.buildId !== undefined ? trun.buildId : currentBuildId(sysId) });
-  Modal.open(title, runFields(fixed, sysId, preset.buildId), preset, v => {
+  // Advisory only: an incomplete or changed spec is shown, never blocks recording.
+  const notes = [];
+  if (tc) {
+    const spec = Store.caseSpec(tc), changed = Store.caseChangedSincePass(tc);
+    if (spec.done < spec.total) notes.push({ type: "note", tone: "warn", text: `Spec ${spec.done}/${spec.total} — missing: ${spec.missing.join(", ")}. You can still record the result.` });
+    if (changed) notes.push({ type: "note", tone: "warn", text: `Changed since ${changed.run.code} passed: ${changed.fields.join(", ")}.` });
+  }
+  Modal.open(title, notes.concat(runFields(fixed, sysId, preset.buildId)), preset, v => {
     if (fixed) v.caseId = preset.caseId;
     if (preset.planId && !v.planId) v.planId = preset.planId;
     if (preset.testRunId) v.testRunId = preset.testRunId;
@@ -331,6 +385,11 @@ function openRunForm(preset) {
     // Same route re-renders in place: filters and scroll survive, and the row comes back into view.
     if (preset.anchor) App.anchor(preset.anchor);
     App.render();
+    // A failure offers a pre-filled defect, the same as Execute mode.
+    if (v.result === "Fail") {
+      const rc = Store.get("cases", run.caseId);
+      if (rc) openDefectForm({ caseIds: [rc.id], componentId: rc.componentId || "", systemId: Store.caseSystemId(rc), runId: run.id, title: `${rc.code}: ` });
+    }
   }, "Record");
 }
 
@@ -393,6 +452,8 @@ Object.assign(Actions, {
 
   /* ---- runs ---- */
   "record-run": caseId => openRunForm({ caseId }),
+  // From a row on the cases page: the page re-renders in place and flashes the row.
+  "record-run-row": caseId => openRunForm({ caseId, anchor: `case-row-${caseId}` }),
   "record-run-plan": (caseId, el) => openRunForm({ caseId, planId: el.dataset.plan }),
   "record-run-any": () => openRunForm({}),
   "edit-run": id => {

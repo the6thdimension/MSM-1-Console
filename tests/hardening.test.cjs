@@ -238,12 +238,12 @@ test('cases page renders component cards in tree order and component tests scope
   d.cases.push({...d.cases.find(c=>c.id==='tc-3'),id:'tc-deep',code:'TC-950',componentId:'cmp-sub-b',title:'Synthetic deep case',removalNominated:false});
   await h.Store.command('import',()=>h.Store.importJSON(JSON.stringify(d)));
   const html=h.Views.cases(new URLSearchParams());
-  const order=[...html.matchAll(/case-card (top|sub|syslevel)" style="--depth:(\d)"/g)].map(m=>m[1]+m[2]);
+  const order=[...html.matchAll(/case-card (top|sub|syslevel)[^"]*" style="--depth:(\d)"/g)].map(m=>m[1]+m[2]);
   assert.ok(order.includes('sub1')&&order.includes('sub2')&&order.includes('syslevel0'),'subcomponent and system-level cards present');
   const iParent=html.indexOf('>CMP-05<'),iChild=html.indexOf('>CMP-90<'),iGrand=html.indexOf('>CMP-91<');
   assert.ok(iParent>0&&iParent<iChild&&iChild<iGrand,'parent, child, grandchild in tree order');
   assert.match(html,/Subcomponent · level 2/);
-  assert.match(h.Views.cases(new URLSearchParams('view=table')),/<th>Component<\/th>/);
+  assert.match(h.Views.cases(new URLSearchParams('view=table')),/<th[^>]*>Component<\/th>/);
   const filtered=h.Views.cases(new URLSearchParams('component=cmp-sub-a'));
   assert.doesNotMatch(filtered,/>CMP-06</);assert.match(filtered,/>CMP-91</);
   assert.deepEqual(copy(h.Store.casesOfBranch('cmp-5').map(c=>c.id).sort()),['tc-14','tc-3','tc-deep']);
@@ -506,6 +506,32 @@ test('schedule lists upcoming events first and past events in their own section,
   const chart=h.Views.schedule(new URLSearchParams());
   const rowsAt=[...chart.matchAll(/class="gantt-label">([^]*?)<\/div>/g)].map(m=>m[1]);
   assert.match(rowsAt[0],/Program/,'the Program (no plan) row sits above every test plan row');
+});
+test('cases page: aligned result-first tables, spec and change signals, attention filters',async()=>{
+  const h=await ready(),S=h.Store;
+  const tc=S.all('cases').find(c=>S.latestRun(c.id)&&c.status!=='Retired'&&c.componentId);
+  // Spec completeness reads the five fields; advisory, never blocking.
+  const spec=S.caseSpec(tc);assert.equal(spec.total,5);assert.equal(spec.done+spec.missing.length,5);
+  await S.command('fill',()=>S.update('cases',tc.id,{objective:'o',expectedResults:'e',passFailCriteria:'p',procedureId:S.all('procedures')[0].id,requirementIds:[S.all('requirements')[0].id]}));
+  assert.equal(S.caseSpec(S.get('cases',tc.id)).done,5);
+  // Changed since pass: only spec edits recorded after the latest passing result count.
+  const pass=()=>S.add('runs',{caseId:tc.id,result:'Pass',date:'2026-01-01',operator:'',planId:'',measured:'',evidence:'',notes:'',extKey:'',recordedAt:'2999-01-01T00:00:00.000Z'});
+  await S.command('pass',()=>{pass().recordedAt='2000-01-01T00:00:00.000Z';});
+  await S.command('spec edit',()=>S.update('cases',tc.id,{expectedResults:'e2'}));
+  const ch=S.caseChangedSincePass(S.get('cases',tc.id));
+  assert.ok(ch,'a spec edit after the pass counts');assert.ok(ch.fields.includes('expectedResults'));assert.ok(!ch.fields.includes('title'));
+  await S.command('pass again',()=>pass());
+  assert.equal(S.caseChangedSincePass(S.get('cases',tc.id)),null,'no spec edit after the latest pass');
+  await S.command('edit',()=>S.update('cases',tc.id,{title:'Renamed only'}));
+  assert.equal(S.caseChangedSincePass(S.get('cases',tc.id)),null,'title edits are not spec changes');
+  const html=h.Views.cases(new URLSearchParams());
+  assert.match(html,/class="data case-table"/);assert.match(html,/<th class="c-result">Latest result<\/th>/);
+  assert.ok(html.indexOf('c-result')<html.indexOf('c-plans col-lo'),'result column comes before low-priority columns');
+  assert.match(html,/data-act="record-run-row"/,'each row can record a result');
+  assert.match(h.Views.cases(new URLSearchParams('attn=spec')),/Needs attention/);
+  const stale=h.Views.cases(new URLSearchParams('attn=stale'));
+  assert.doesNotMatch(stale,new RegExp(`id="case-row-${tc.id}"`),'a case passed in the future is not stale');
+  assert.match(h.Views.caseDetail(S.all('cases').find(c=>S.caseSpec(c).done<5&&c.status!=='Retired').id),/SPEC \d\/5 — MISSING/);
 });
 test('runtime shell has no remote assets and disallows background connections',()=>{
   const html=fs.readFileSync(path.join(root,'index.html'),'utf8');assert.doesNotMatch(html,/(?:src|href)="https?:/);assert.match(html,/connect-src 'none'/);
