@@ -93,6 +93,15 @@ class, existing non-self parents, array of `{url, label}` links). The per-class
 code counters live in `meta.seq` under new keys; older releases accept extra
 counter keys.
 
+**Releases and builds.** `releases` and `builds` are new optional collections;
+a database without them loads with both as empty lists, as `testRuns` did. The
+optional `buildId` on runs and test run sessions is never added during import and
+never inferred: existing results stay "build not recorded" until someone edits them.
+When present, every build reference must resolve, statuses must be known values,
+and a build's release must belong to the same system. Older releases of this app do
+not know these collections; per the compatibility contract, new-version exports are
+not guaranteed to import into an old app.
+
 Migration retains legacy `procedureId` and free-text `decision` fields. Defaults
 are added only when absent. Existing statuses and measurements are not rewritten
 during import. New runs add `recordedAt`; same-day historical runs without that

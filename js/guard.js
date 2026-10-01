@@ -1,6 +1,6 @@
 /* Pure, offline schema checks. Unknown fields are retained, never projected away. */
 const DataGuard = {
-  collections: ['systems', 'components', 'requirements', 'cases', 'procedures', 'criteria', 'plans', 'runs', 'risks', 'resources', 'decisions', 'events', 'defects', 'documents', 'testRuns', 'snapshots', 'audit'],
+  collections: ['systems', 'components', 'requirements', 'cases', 'procedures', 'criteria', 'plans', 'runs', 'risks', 'resources', 'decisions', 'events', 'defects', 'documents', 'testRuns', 'releases', 'builds', 'snapshots', 'audit'],
   required: ['systems', 'components', 'requirements', 'cases', 'procedures', 'criteria', 'plans', 'runs', 'risks'],
   arrays: {
     requirements: ['componentIds'], cases: ['requirementIds', 'resourceIds', 'extLinks'],
@@ -12,12 +12,13 @@ const DataGuard = {
     components: { systemId: 'systems', parentComponentId: 'components' }, requirements: { componentIds: 'components', systemId: 'systems', derivedFromIds: 'requirements' },
     cases: { componentId: 'components', systemId: 'systems', procedureId: 'procedures', requirementIds: 'requirements', resourceIds: 'resources' },
     procedures: { systemId: 'systems' },
-    plans: { caseIds: 'cases', decisionId: 'decisions', regressionSystemId: 'systems', systemId: 'systems' }, runs: { caseId: 'cases', planId: 'plans', testRunId: 'testRuns' },
+    plans: { caseIds: 'cases', decisionId: 'decisions', regressionSystemId: 'systems', systemId: 'systems' }, runs: { caseId: 'cases', planId: 'plans', testRunId: 'testRuns', buildId: 'builds' },
     defects: { componentId: 'components', caseIds: 'cases', runId: 'runs', systemId: 'systems' },
     risks: { relatedRequirementIds: 'requirements', relatedCaseIds: 'cases', systemId: 'systems' },
     decisions: { requirementIds: 'requirements', systemId: 'systems' }, events: { planId: 'plans', decisionId: 'decisions', systemId: 'systems' },
     documents: { systemId: 'systems' }, resources: { systemId: 'systems' },
-    testRuns: { planId: 'plans', systemId: 'systems', componentId: 'components', caseIds: 'cases' }
+    testRuns: { planId: 'plans', systemId: 'systems', componentId: 'components', caseIds: 'cases', buildId: 'builds' },
+    releases: { systemId: 'systems', decisionId: 'decisions' }, builds: { systemId: 'systems', releaseId: 'releases' }
   },
   enums: {
     cases: {status: ['Draft','Ready','In Progress','Complete','Blocked','Retired']},
@@ -28,6 +29,8 @@ const DataGuard = {
     risks: {status: ['Open','Mitigating','Monitoring','Closed']},
     decisions: {status: ['Pending','On Track','At Risk','Complete']},
     events: {status: ['Planned','In Progress','Complete','Slipped','Cancelled']},
+    releases: {status: ['Planning','In Test','Release Candidate','Released','Cancelled']},
+    builds: {status: ['Received','Smoke Passed','Under Test','Accepted','Rejected','Shipped']},
     resources: {verification: ['Not Started','Planned','In Progress','Complete'], validation: ['Not Started','Planned','In Progress','Complete'], accreditation: ['Not Started','Plan Approved','Evidence In Review','Conditionally Accredited','Accredited','Not Accredited']}
   },
   clone(value) { return JSON.parse(JSON.stringify(value)); },
@@ -131,7 +134,7 @@ const DataGuard = {
         codes.add(r.code);
       }
     };
-    const strings = ['code','name','title','description','text','objective','threshold','measure','method','type','priority','status','phase','date','start','end','operator','result','measured','evidence','notes','extKey','venue','testType','owner','authority','intendedUse','accDate','accScope','opened','closed','category','docType','url','fileName','fileType','dataUrl','relatedCodes','added','decision','reviewDisposition','preconditions','testData','expectedResults','passFailCriteria','createdAt','startedAt','completedAt','team','lead','reqClass'];
+    const strings = ['code','name','title','description','text','objective','threshold','measure','method','type','priority','status','phase','date','start','end','operator','result','measured','evidence','notes','extKey','venue','testType','owner','authority','intendedUse','accDate','accScope','opened','closed','category','docType','url','fileName','fileType','dataUrl','relatedCodes','added','decision','reviewDisposition','preconditions','testData','expectedResults','passFailCriteria','createdAt','startedAt','completedAt','team','lead','reqClass','label','received','targetDate','releasedDate','fixVersion','cycle'];
     const known = {
       systems:'name description team lead', components:'systemId parentComponentId name description',
       requirements:'title text type priority method measure threshold objective extKey systemId reqClass',
@@ -144,9 +147,11 @@ const DataGuard = {
       risks:'title description category status owner likelihood impact initialLikelihood initialImpact residualLikelihood residualImpact systemId',
       resources:'name type description vvaRequired intendedUse owner authority verification validation accreditation accDate accScope artifacts systemId',
       decisions:'title description status date authority systemId', events:'title description type status start end location planId decisionId systemId',
-      documents:'title docType description url fileName fileSize fileType dataUrl relatedCodes added systemId'
+      documents:'title docType description url fileName fileSize fileType dataUrl relatedCodes added systemId',
+      releases:'name description status targetDate releasedDate systemId decisionId fixVersion',
+      builds:'label description status received systemId releaseId url cycle'
     };
-    const dates = ['date','start','end','accDate','opened','closed','added'];
+    const dates = ['date','start','end','accDate','opened','closed','added','received','targetDate','releasedDate'];
     const checkDate = (value,path) => {
       if (value === '' || value === undefined || value === null) return;
       if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(value)) || new Date(value).toISOString().slice(0,10)!==value) this.fail(path,'expected a valid YYYY-MM-DD date');
@@ -163,7 +168,7 @@ const DataGuard = {
           if ((r.derivedFromIds||[]).includes(r.id)) this.fail(`${path}.derivedFromIds`,'a requirement cannot derive from itself');
           if (r.reqClass!==undefined && !['System','PSPEC','SW'].includes(r.reqClass)) this.fail(`${path}.reqClass`,'unsupported requirement class');
         }
-        const requiredText={systems:['name'],components:['name'],requirements:['title'],cases:['title'],procedures:['title'],criteria:['text'],plans:['name'],risks:['title','description'],resources:['name'],decisions:['title'],events:['title'],defects:['title'],documents:['title']}[coll]||[];
+        const requiredText={systems:['name'],components:['name'],requirements:['title'],cases:['title'],procedures:['title'],criteria:['text'],plans:['name'],risks:['title','description'],resources:['name'],decisions:['title'],events:['title'],defects:['title'],documents:['title'],releases:['name'],builds:['label']}[coll]||[];
         for(const key of requiredText)if(typeof r[key]!=='string'||!r[key].trim())this.fail(`${path}.${key}`,'required text is missing');
         for (const key of strings) if (fields.has(key) && r[key] !== undefined && !(coll === 'events' && key === 'notes') && typeof r[key] !== 'string') this.fail(`${path}.${key}`,'expected text');
         for (const key of dates) if(fields.has(key))checkDate(r[key],`${path}.${key}`);
@@ -197,6 +202,11 @@ const DataGuard = {
           if (r[key] && !Number.isFinite(Date.parse(r[key]))) this.fail(`${path}.${key}`,'expected a date-time');
         }
         if (coll === 'runs' && (!r.caseId || !r.date)) this.fail(path,'caseId and date are required');
+        // A build's release belongs to the same system (both blank after a system is deleted).
+        if (coll === 'builds' && r.releaseId && r.systemId) {
+          const rel = (db.releases || []).find(x => x.id === r.releaseId);
+          if (rel && rel.systemId && rel.systemId !== r.systemId) this.fail(`${path}.releaseId`,'release belongs to a different system');
+        }
         if (coll === 'criteria' && !db[r.parentType==='plan'?'plans':'procedures'].some(p=>p.id===r.parentId)) this.fail(path,'missing criterion parent');
         for (const step of coll==='procedures'?r.steps:[]) if (typeof step !== 'string') this.fail(`${path}.steps`,'expected text steps');
         // Defect links are optional: validated when present, never defaulted onto existing records.

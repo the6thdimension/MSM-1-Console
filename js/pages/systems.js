@@ -18,7 +18,7 @@ Views.systems = function () {
       ${s.team || s.lead ? `<div class="sys-team">${s.team ? `<span>${esc(s.team)}</span>` : ""}${s.lead ? `<span>Lead: ${esc(s.lead)}</span>` : ""}</div>` : ""}
       <p>${esc(s.description)}</p>
       <div class="comp-pills">${pills || `<span class="faint small">no components</span>`}</div>
-      <div class="sys-stats"><span><b>${comps.length}</b> components</span><span><b>${cases.length}</b> test cases</span></div>
+      <div class="sys-stats"><span><b>${comps.length}</b> components</span><span><b>${cases.length}</b> test cases</span>${(b => b ? `<span title="Current build: ${esc(b.code)} · ${esc(b.status)}">⎇ <b>${esc(b.label)}</b></span>` : "")(Store.currentBuild(s.id))}</div>
     </a>`;
   }).join("");
   return `
@@ -58,6 +58,7 @@ Views.systemDetail = function (id) {
       `${s.team ? `Team: <b>${esc(s.team)}</b> &nbsp;·&nbsp; ` : ""}${s.lead ? `Lead: <b>${esc(s.lead)}</b> &nbsp;·&nbsp; ` : ""}${esc(s.description)}
        ${Scope.system !== s.id ? ` &nbsp;<button class="btn btn-ghost btn-xs" data-act="scope-to" data-id="${s.id}">◎ Work in this system</button>` : ""}`)}
     ${regressionScopePanel(s)}
+    ${systemReleasePanel(s)}
     ${panel("Components", compRows
       ? `<div class="table-scroll"><table class="data"><thead><tr><th>Code</th><th>Component</th><th>Status</th><th>Test Cases</th><th>Reqs</th><th>Open Defects</th><th></th></tr></thead><tbody>${compRows}</tbody></table></div>`
       : emptyMsg("No components under this system yet — add one."), "", true)}

@@ -75,7 +75,7 @@ a test run brings its row back into view. Navigating to a new page starts at the
 | `js/io.js` | `IO`: CSV parser/writer, Jira and Zephyr conversions, browser file downloads |
 | `js/ui.js` | Escaping, links, badges, page fragments, schema-driven forms, confirmations, toasts, command palette |
 | `js/views.js` | Views core: shared vocabularies, rendering helpers (badges, run dots, pace strip, charts, external-links panel), the `Views` and `Actions` objects, shared actions, owner fields |
-| `js/pages/*.js` | One file per page area — `dashboard`, `systems`, `requirements`, `cases`, `procedures`, `plans`, `risks`, `documents`, `defects`, `decisions`, `schedule`, `resources`, `interchange` — each holding that area's page renderers, its actions (added with `Object.assign(Actions, …)`) and its form field definitions |
+| `js/pages/*.js` | One file per page area — `dashboard`, `systems`, `requirements`, `cases`, `procedures`, `plans`, `risks`, `documents`, `defects`, `decisions`, `schedule`, `resources`, `interchange`, `releases` — each holding that area's page renderers, its actions (added with `Object.assign(Actions, …)`) and its form field definitions |
 | `js/regression.js` | Test run sessions page, full-system regression, plan Auto-Fill / Start Run, review-for-removal dispositions |
 | `js/scope.js` | Scope banner, ownership page (assign program-level records to systems, reviewed suggestions) |
 | `js/app.js` | `App`: startup, hash routing, HTML replacement, scroll/anchor preservation, delegated events, file reads, bulk-selection state |
@@ -107,15 +107,17 @@ The tables below describe the application's known fields, not a strict schema.
 |---|---|
 | `meta` | `program`, `version` (seed/blank use 2), `seq` counters (plus per-class requirement series `requirements.REQ` / `requirements.PSPEC` / `requirements.SWR`), `jiraBaseUrl` |
 | `systems` | `id`, `code`, `name`, `description`, `team`, `lead` |
-| *(ownership)* | Optional `systemId` on `requirements`, `procedures`, `plans`, `testRuns`, `risks`, `defects`, `decisions`, `events`, `documents`, `resources` = owning system; blank or absent = program-level / shared |
+| *(ownership)* | Optional `systemId` on `requirements`, `procedures`, `plans`, `testRuns`, `risks`, `defects`, `decisions`, `events`, `documents`, `resources`, `releases`, `builds` = owning system; blank or absent = program-level / shared |
 | `components` | `id`, `code`, `systemId`, optional `parentComponentId` (subcomponent link, any depth, same system), `name`, `description` |
 | `requirements` | `id`, `code`, `title`, `text`, `type`, `priority`, `method`, `measure`, `threshold`, `objective`, `componentIds[]`, `extKey`, optional `reqClass` (`System` / `PSPEC` / `SW`; absent = System), optional `derivedFromIds[]` (parent requirements it flows down from) |
 | `procedures` | `id`, `code`, `title`, `description`, `steps[]` of strings |
 | `criteria` | `id`, `code`, `parentType` (`procedure`/`plan`), `parentId`, `kind` (`entry`/`exit`), `text`, `status`; old records may have `procedureId` |
 | `cases` | `id`, `code`, `componentId` and/or `systemId` (blank component = system-level case), `title`, `objective`, `requirementIds[]`, `procedureId`, `resourceIds[]`, `priority`, `status` (adds `Retired`), `venue`, `testType`, `extKey`, `extLinks[]`, `removalNominated`, `reviewDisposition`, `preconditions`, `testData`, `expectedResults`, `passFailCriteria` |
 | `plans` | `id`, `code`, `name`, `description`, `phase`, `status`, `start`, `end`, `caseIds[]`, `decisionId`, `extKey`, `extLinks[]`, optional `regressionSystemId`; old `decision` free text migrates |
-| `runs` | `id`, `code`, `caseId`, optional `planId`, optional `testRunId`, `date`, `operator`, `result` (adds `Waived`, `Review for Removal`), `measured`, `evidence`, `notes`, `extKey` |
-| `testRuns` | `id`, `code`, `name`, `operator`, `status` (free text; app uses Active/Complete/Aborted), `planId`, `systemId`, `componentId` (optional scope root), `caseIds[]` (scope frozen at start), `notes`, `createdAt`, `startedAt`, `completedAt` (date-time text) |
+| `runs` | `id`, `code`, `caseId`, optional `planId`, optional `testRunId`, optional `buildId` (the build the result was measured on), `date`, `operator`, `result` (adds `Waived`, `Review for Removal`), `measured`, `evidence`, `notes`, `extKey` |
+| `testRuns` | `id`, `code`, `name`, `operator`, `status` (free text; app uses Active/Complete/Aborted), `planId`, `systemId`, `componentId` (optional scope root), `caseIds[]` (scope frozen at start), optional `buildId` (build under test), `notes`, `createdAt`, `startedAt`, `completedAt` (date-time text) |
+| `releases` | `id`, `code` (REL-##), `systemId` (each system has its own releases), `name`, `status` (Planning / In Test / Release Candidate / Released / Cancelled), `targetDate`, `releasedDate`, optional `decisionId`, optional `fixVersion` (Jira Fix Version), `description` |
+| `builds` | `id`, `code` (BLD-###), `systemId` (each system has its own build stream), optional `releaseId` (a release of the same system), `label` (version string), `status` (Received / Smoke Passed / Under Test / Accepted / Rejected / Shipped), `received` date, optional `url` (artifact or CI link), optional `cycle` (Zephyr test cycle), `description` (change notes) |
 | `defects` | `id`, `code`, `title`, `description`, `severity`, `status`, `componentId`, `caseIds[]`, `runId`, `owner`, `opened`, `closed`, optional `extLinks[]` |
 | `risks` | `id`, `code`, `title`, `description`, `category`, `status`, `owner`, likelihood/impact, initial and residual likelihood/impact, `relatedRequirementIds[]`, `relatedCaseIds[]`, nested `mitigations[]` |
 | `resources` | `id`, `code`, `name`, `type`, `description`, `vvaRequired`, `intendedUse`, `owner`, `authority`, `verification`, `validation`, `accreditation`, `accDate`, `accScope`, `artifacts` booleans |
@@ -161,6 +163,7 @@ Compatibility must retain both forms and validate counters against actual record
 | `#/documents` | External references and embedded files, related-code links |
 | `#/interchange` | CSV conversions, full JSON transfer, Jira URL setting, blank program (always whole-program, regardless of scope) |
 | `#/ownership` | Ownership overview per system; program-level records with reviewed owner suggestions; assign selected or accept suggestions |
+| `#/releases`, `#/releases/:id`, `#/builds/:id` | Per system: current build, releases (status, target, latest build, decision, Jira Fix Version) and the build stream with how many active cases have a result on each build. A build page shows results on that build, what has not been run on it yet, its change notes, sessions run against it, and links to the newer and older builds. System pages carry a Releases & Builds panel; system cards show the current build |
 | `#/sitrep`, `#/decisions/:id/report` | Print-oriented weekly program and decision package reports |
 | `#/search?q=...` | Case-insensitive substring search across configured fields, capped at 40 hits |
 
@@ -225,6 +228,18 @@ Compatibility must retain both forms and validate counters against actual record
   Flow-down (`derivedFromIds`) is informational: a parent's status is never derived
   from its children. Self-derivation is rejected; deleting a parent removes the
   link from its children without deleting them.
+- Builds: each system has its own build stream and its own releases; a build's
+  release must belong to the same system. A system's **current build** is its newest
+  build with status Under Test, else its newest build that was not Rejected — derived
+  from the build records, not a per-browser setting. New runs, Execute and new test
+  run sessions default to it (a run recorded inside a session defaults to the
+  session's build); the field can be changed or cleared. **An older-build result
+  still counts**: requirement and component rollups ignore builds entirely. Each
+  result is labeled with how many non-rejected builds of its system arrived after the
+  build it was measured on ("2 builds old"). Results with no build show "build not
+  recorded" once the system has builds; nothing is shown for systems without builds,
+  and old results are never assigned a build automatically. Deleting a build keeps its
+  results (they lose only the build link); deleting a release keeps its builds.
 - Closed and Deferred defects are excluded from the “open” calculation.
 - Decision readiness is the percentage of linked requirements currently verified;
   no linked requirements returns no readiness value. It is not an approval gate.

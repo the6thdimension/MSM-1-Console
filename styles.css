@@ -1553,6 +1553,20 @@ table.trace thead th.grp a { display: block; overflow: hidden; text-overflow: el
 .cc-meter { width: 110px; }
 .cc-empty { padding: 10px 14px; font-size: 12px; color: var(--ink-faint); font-style: italic; }
 
+/* ---------- releases and builds ---------- */
+.build-tag { font-family: var(--mono); font-size: 11px; color: var(--purple); white-space: nowrap; }
+a.build-tag:hover { color: var(--ink); text-decoration: none; }
+.build-tag.none { color: var(--ink-faint); font-style: italic; }
+.build-age { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); white-space: nowrap; }
+.build-age.current { color: var(--green); }
+.build-age.stale { color: var(--amber); }
+.rel-sys { background: var(--bg-1); border: 1px solid var(--line-soft); border-top: 3px solid var(--purple); border-radius: 6px; margin-bottom: 16px; overflow: hidden; }
+.rel-sys-head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 12px 16px; border-bottom: 1px solid var(--line-soft); }
+.rel-sys-head > div:first-child { font-family: var(--disp); font-size: 17px; letter-spacing: 1px; text-transform: uppercase; }
+.rel-sys-head > div:first-child a { color: var(--ink); }
+.rel-sys-head .inline-actions { margin-left: auto; }
+.rel-current { font-size: 12px; color: var(--ink-dim); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
 /* ---------- regression scope ---------- */
 .scope-line { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .scope-big { font-family: var(--disp); font-weight: 700; font-size: 34px; line-height: 1; color: var(--amber); }

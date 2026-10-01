@@ -247,6 +247,7 @@ Views.testRun = function (id, params = new URLSearchParams()) {
       (toRerun ? actBtn(`↻ Rerun ${toRerun} Open/Failed`, "tr-rerun", t.id) : "") +
       (open ? actBtn("✓ Complete Run", "tr-complete", t.id, "", false) : actBtn("Reopen", "tr-reopen", t.id)),
       `${badge(t.status || "Active")} &nbsp; ${sys ? chip("systems", sys) : ""} ${plan ? chip("plans", plan) : ""} ${scopeComp ? chip("components", scopeComp) : ""}
+       ${t.buildId && Store.get("builds", t.buildId) ? `<span class="small">testing ${buildChip(Store.get("builds", t.buildId))}</span>` : ""}
        <span class="faint mono small">started ${runTimeLabel(t.startedAt || t.createdAt)}${t.completedAt ? ` · completed ${runTimeLabel(t.completedAt)}` : ""}${t.operator ? ` · ${esc(t.operator)}` : ""}</span>`)}
     <div class="kpi-row">
       <div class="kpi" style="--kpi-accent:var(--amber)"><div class="kpi-label">Completion</div><div class="kpi-value">${pct}<small>%</small></div><div class="kpi-foot">${done} of ${cases.length} cases have a final result</div></div>
@@ -270,8 +271,12 @@ Views.testRun = function (id, params = new URLSearchParams()) {
 /* ================= ACTIONS ================= */
 function startTestRun(fields) {
   const now = new Date().toISOString();
-  return Store.add("testRuns", Object.assign({ name: "Test run", operator: "", status: "Active", notes: "", planId: "", systemId: "", componentId: "", createdAt: now, startedAt: now, completedAt: "", caseIds: [] }, fields));
+  const t = Object.assign({ name: "Test run", operator: "", status: "Active", notes: "", planId: "", systemId: "", componentId: "", createdAt: now, startedAt: now, completedAt: "", caseIds: [] }, fields);
+  // A session tests one build: the system's current build unless one was chosen.
+  if (t.buildId === undefined && currentBuildId(t.systemId)) t.buildId = currentBuildId(t.systemId);
+  return Store.add("testRuns", t);
 }
+const buildNote = sysId => { const b = sysId && Store.currentBuild(sysId); return b ? ` Results are recorded against build ${b.label}.` : ""; };
 
 /* Add missing in-scope cases to a plan; returns how many were added. */
 function fillPlan(plan, scope) {
@@ -301,7 +306,7 @@ Object.assign(Actions, {
       scope.some(tc => !tc.componentId) && "system level"].filter(Boolean).join(", ").replace(/, ([^,]*)$/, " and $1");
     Modal.confirm(`Start a full regression of ${sys.code} ${sys.name}? ${scope.length} test case(s) are in scope across ${where}${retired ? `; ${retired} retired case(s) excluded` : ""}. ` +
       (plan ? `Uses regression plan ${plan.code}${missing ? ` and adds ${missing} missing case(s) to it` : ""}.` : "A regression plan will be created for this system.") +
-      " A new test run session opens with the scope frozen.", () => {
+      " A new test run session opens with the scope frozen." + buildNote(sysId), () => {
         const p = plan || Store.add("plans", {
           name: `${sys.name} Full Regression`, phase: "Regression", status: "Active", start: todayISO(), end: "", extKey: "", decisionId: "",
           description: `Full regression of ${sys.code} ${sys.name}: every active test case across its components, subcomponents and system level.`,
@@ -327,7 +332,7 @@ Object.assign(Actions, {
     const retired = all.length - scope.length;
     Modal.confirm(`Start a component test of ${comp.code} ${comp.name}? ${scope.length} test case(s) in scope: ${own} on the component` +
       (subs ? ` and ${scope.length - own} across its ${subs} subcomponent(s)` : "") + (retired ? `; ${retired} retired excluded` : "") +
-      ". A new test run session opens with the scope frozen.", () => {
+      ". A new test run session opens with the scope frozen." + buildNote(comp.systemId), () => {
         const n = Store.all("testRuns").filter(t => t.componentId === compId).length + 1;
         const t = startTestRun({ name: `${comp.name} component test${n > 1 ? ` ${n}` : ""}`, systemId: comp.systemId, componentId: compId,
           caseIds: scope.map(tc => tc.id), notes: `Component test of ${comp.code}${subs ? " including its subcomponents" : ""}: ${scope.length} case(s) frozen at start.` });
@@ -371,16 +376,18 @@ Object.assign(Actions, {
 
   "record-run-tr": (caseId, el) => {
     const t = Store.get("testRuns", el.dataset.tr);
-    openRunForm({ caseId, planId: t.planId || "", testRunId: t.id, operator: t.operator || "", anchor: `trc-${caseId}` });
+    openRunForm({ caseId, planId: t.planId || "", testRunId: t.id, operator: t.operator || "", anchor: `trc-${caseId}`, ...(t.buildId !== undefined ? { buildId: t.buildId } : {}) });
   },
 
   "edit-testrun": id => {
     const t = Store.get("testRuns", id);
     const statuses = TEST_RUN_STATUSES.includes(t.status) || !t.status ? TEST_RUN_STATUSES : [t.status, ...TEST_RUN_STATUSES];
+    const build = buildField(t.systemId ? [t.systemId] : Store.all("systems").map(s => s.id), t.buildId);
     Modal.open(`Edit ${t.code || "Test Run"}`, [
       { key: "name", label: "Name", required: true },
       { key: "operator", label: "Operator / Test Conductor", half: true },
       { key: "status", label: "Status", type: "select", half: true, options: statuses },
+      ...(build ? [Object.assign(build, { label: "Build under test (new results default to it)" })] : []),
       { key: "notes", label: "Notes", type: "textarea" }
     ], t, v => { Store.update("testRuns", id, v); Toast.show("Saved"); App.render(); });
   },

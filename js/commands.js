@@ -20,7 +20,7 @@ const Commands = {
     for (const [name, fn] of Object.entries(Actions)) {
       if (immediate.has(name)) continue;
       Actions[name]=(id,el)=>this.run(name,()=> {
-        const coll={'del-system':'systems','del-component':'components','del-case':'cases','del-requirement':'requirements','del-plan':'plans','del-run':'runs','del-procedure':'procedures','del-resource':'resources','del-decision':'decisions','del-event':'events','del-defect':'defects','del-risk':'risks','del-doc':'documents','del-crit':'criteria','del-testrun':'testRuns'}[name];
+        const coll={'del-system':'systems','del-component':'components','del-case':'cases','del-requirement':'requirements','del-plan':'plans','del-run':'runs','del-procedure':'procedures','del-resource':'resources','del-decision':'decisions','del-event':'events','del-defect':'defects','del-risk':'risks','del-doc':'documents','del-crit':'criteria','del-testrun':'testRuns','del-release':'releases','del-build':'builds'}[name];
         if(coll) {
           const original=Modal.confirm;
           Modal.confirm=(message,yes,label,safe)=>original.call(Modal,message+' Affected records: '+Store.deletionImpact(coll,id),yes,label,safe);

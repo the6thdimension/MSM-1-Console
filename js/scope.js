@@ -8,10 +8,10 @@
 const OWNED_LABELS = {
   requirements: "Requirements", procedures: "Procedures", plans: "Test Plans", testRuns: "Test Run Sessions",
   risks: "Risks", defects: "Defects", decisions: "Decisions (IDSK)", events: "Schedule Events",
-  documents: "Documents", resources: "Resources / M&S Assets"
+  documents: "Documents", resources: "Resources / M&S Assets", releases: "Releases", builds: "Builds"
 };
 
-function recordLabel(r) { return r.title || r.name || r.code || r.id; }
+function recordLabel(r) { return r.title || r.name || r.label || r.code || r.id; }
 
 /* Strip at the top of every page while a single system is in scope. */
 function scopeBanner() {

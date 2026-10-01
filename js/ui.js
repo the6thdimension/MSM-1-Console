@@ -31,7 +31,9 @@ const ROUTE_OF = {
   defects: id => `#/defects/${id}`,
   documents: () => "#/documents",
   testRuns: id => `#/testruns/${id}`,
-  runs: () => "#/runs"
+  runs: () => "#/runs",
+  releases: id => `#/releases/${id}`,
+  builds: id => `#/builds/${id}`
 };
 
 /* ---------- system scope ----------
@@ -119,7 +121,10 @@ const BADGE_COLOR = {
   "Passing": "b-green", "Failing": "b-red", "In Test": "b-amber", "Untested": "b-grey",
   // defects
   "Major": "b-orange", "Minor": "b-amber", "Cosmetic": "b-grey",
-  "In Analysis": "b-amber", "Fix In Work": "b-blue", "Ready for Retest": "b-purple", "Deferred": "b-grey"
+  "In Analysis": "b-amber", "Fix In Work": "b-blue", "Ready for Retest": "b-purple", "Deferred": "b-grey",
+  // releases and builds
+  "Release Candidate": "b-purple", "Released": "b-green",
+  "Received": "b-grey", "Smoke Passed": "b-blue", "Under Test": "b-amber", "Accepted": "b-green", "Rejected": "b-red", "Shipped": "b-green"
 };
 
 function badge(text, cls) {
@@ -312,6 +317,8 @@ const Palette = {
       { type: "New", label: "New Event", act: "add-event" },
       { type: "New", label: "New Decision", act: "add-decision" },
       { type: "New", label: "New Procedure", act: "add-procedure" },
+      { type: "New", label: "New Release", act: "add-release" },
+      { type: "New", label: "New Build", act: "add-build" },
       { type: "New", label: "Record Test Run", act: "record-run-any" }
     ];
   },

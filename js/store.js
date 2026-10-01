@@ -8,10 +8,11 @@ const OLD_DB_KEYS = ["msm4-te-db-v1"];
 const CODE_PREFIX = {
   systems: "SYS", components: "CMP", requirements: "REQ", cases: "TC",
   procedures: "PROC", criteria: "CRI", plans: "TP", runs: "RUN",
-  risks: "RSK", mitigations: "MIT", resources: "RES", decisions: "DP", events: "EVT", notes: "NOTE", defects: "DEF", documents: "DOC", testRuns: "TR"
+  risks: "RSK", mitigations: "MIT", resources: "RES", decisions: "DP", events: "EVT", notes: "NOTE", defects: "DEF", documents: "DOC", testRuns: "TR",
+  releases: "REL", builds: "BLD"
 };
 
-const CODE_PAD = { systems: 2, components: 2, procedures: 2, plans: 2, resources: 2, decisions: 2, events: 2, requirements: 3, cases: 3, runs: 3, risks: 3, criteria: 3, mitigations: 3, notes: 3, defects: 3, documents: 2, testRuns: 3 };
+const CODE_PAD = { systems: 2, components: 2, procedures: 2, plans: 2, resources: 2, decisions: 2, events: 2, requirements: 3, cases: 3, runs: 3, risks: 3, criteria: 3, mitigations: 3, notes: 3, defects: 3, documents: 2, testRuns: 3, releases: 2, builds: 3 };
 
 /* Case lifecycle implied by a case's latest run result. */
 const RUN_CASE_STATUS = { Pass: 'Complete', Fail: 'In Progress', 'In Progress': 'In Progress', Blocked: 'Blocked', Waived: 'Complete', 'Review for Removal': 'Draft' };
@@ -234,7 +235,7 @@ const Store = {
       meta: { program: programName || "New T&E Program", version: 2, jiraBaseUrl: keepJira, seq: {} },
       systems: [], components: [], requirements: [], cases: [], procedures: [], criteria: [],
       plans: [], runs: [], risks: [], resources: [], decisions: [], events: [], defects: [],
-      documents: [], testRuns: [], snapshots: [], audit: []
+      documents: [], testRuns: [], releases: [], builds: [], snapshots: [], audit: []
     };
     this.migrate();
   },
@@ -248,7 +249,7 @@ const Store = {
   get(coll, id) { return (this.db[coll] || []).find(x => x.id === id) || null; },
 
   byCode(code) {
-    for (const coll of ["systems", "components", "requirements", "cases", "procedures", "plans", "runs", "risks", "resources", "decisions", "events", "defects", "documents", "testRuns"]) {
+    for (const coll of ["systems", "components", "requirements", "cases", "procedures", "plans", "runs", "risks", "resources", "decisions", "events", "defects", "documents", "testRuns", "releases", "builds"]) {
       const hit = this.all(coll).find(x => x.code === code);
       if (hit) return { coll, entity: hit };
     }
@@ -358,6 +359,7 @@ const Store = {
     }
     if (coll === "decisions") {
       db.plans.forEach(p => { if (p.decisionId === id) p.decisionId = ""; });
+      (db.releases || []).forEach(rel => { if (rel.decisionId === id) rel.decisionId = ""; });
       (db.events || []).forEach(ev => { if (ev.decisionId === id) ev.decisionId = ""; });
     }
     if (coll === "procedures") {
@@ -372,6 +374,12 @@ const Store = {
     }
     if (coll === "resources") {
       db.cases.forEach(tc => tc.resourceIds = (tc.resourceIds || []).filter(x => x !== id));
+    }
+    // Builds outlive a deleted release; results outlive a deleted build (they become "build not recorded").
+    if (coll === "releases") (db.builds || []).forEach(b => { if (b.releaseId === id) b.releaseId = ""; });
+    if (coll === "builds") {
+      db.runs.forEach(r => { if (r.buildId === id) r.buildId = ""; });
+      (db.testRuns || []).forEach(t => { if (t.buildId === id) t.buildId = ""; });
     }
   },
 
@@ -430,7 +438,7 @@ const Store = {
      The system a record belongs to, or "" for program-level / shared. Structural
      records derive it (component → its system, case → its component's system,
      run → its case, criterion → its parent); the rest carry an explicit systemId. */
-  OWNED: ["requirements", "procedures", "plans", "testRuns", "risks", "defects", "decisions", "events", "documents", "resources"],
+  OWNED: ["requirements", "procedures", "plans", "testRuns", "risks", "defects", "decisions", "events", "documents", "resources", "releases", "builds"],
   ownerOf(coll, r) {
     if (!r) return "";
     switch (coll) {
@@ -459,6 +467,8 @@ const Store = {
       case "events": basis = [r.planId && this.ownerOf("plans", this.get("plans", r.planId)), r.decisionId && this.ownerOf("decisions", this.get("decisions", r.decisionId))]; why = "linked plan and decision"; break;
       case "documents": basis = String(r.relatedCodes || "").split(/[,\s]+/).filter(Boolean).map(c => { const hit = this.byCode(c.toUpperCase()); return hit ? this.ownerOf(hit.coll, hit.entity) : ""; }); why = "related codes"; break;
       case "resources": basis = this.casesOfResource(r.id).map(tc => this.caseSystemId(tc)); why = "test cases using it"; break;
+      case "releases": basis = this.buildsOfRelease(r.id).map(b => b.systemId); why = "its builds"; break;
+      case "builds": basis = [r.releaseId && this.ownerOf("releases", this.get("releases", r.releaseId))].concat(this.runsOfBuild(r.id).map(x => this.ownerOf("runs", x))); why = "its release and the runs recorded on it"; break;
     }
     const set = new Set(basis.filter(Boolean));
     return set.size === 1 ? { systemId: [...set][0], why } : null;
@@ -581,6 +591,35 @@ const Store = {
     return "Untested";
   },
 
+  /* ---------- releases and builds ----------
+     Each system has its own build stream and its own releases; a build belongs to at most one
+     release of the same system. A run records the build it was measured on in buildId. Build
+     order is by received date, then code. Rejected builds never count as "newer". */
+  buildOrder(a, b) { return (a.received || "").localeCompare(b.received || "") || this.byCodeOrder(a, b); },
+  buildsOf(sysId) { return this.all("builds").filter(b => b.systemId === sysId).sort((a, b) => this.buildOrder(b, a)); },
+  buildsOfRelease(relId) { return this.all("builds").filter(b => b.releaseId === relId).sort((a, b) => this.buildOrder(b, a)); },
+  releasesOf(sysId) { return this.all("releases").filter(r => r.systemId === sysId).sort((a, b) => (a.targetDate || "9999").localeCompare(b.targetDate || "9999") || this.byCodeOrder(a, b)); },
+  runsOfBuild(buildId) { return this.all("runs").filter(r => r.buildId === buildId); },
+  /* The build a system is testing now: its newest Under Test build, else its newest build that
+     was not rejected. Derived from build records, so every tab and user sees the same answer. */
+  currentBuild(sysId) {
+    const list = this.buildsOf(sysId).filter(b => b.status !== "Rejected");
+    return list.find(b => b.status === "Under Test") || list[0] || null;
+  },
+  /* How many non-rejected builds of the same system arrived after the build a run was measured
+     on. null when the run has no recorded build. */
+  buildsBehind(run) {
+    const b = run && run.buildId ? this.get("builds", run.buildId) : null;
+    if (!b) return null;
+    return this.buildsOf(b.systemId).filter(x => x.id !== b.id && x.status !== "Rejected" && this.buildOrder(x, b) > 0).length;
+  },
+  /* Each case's latest result on one build. */
+  buildResults(buildId) {
+    const out = new Map();
+    for (const r of this.runsOfBuild(buildId).sort((a, b) => this.compareRuns(a, b))) if (!out.has(r.caseId)) out.set(r.caseId, r);
+    return out;
+  },
+
   plansOfDecision(decId) { return this.all("plans").filter(p => p.decisionId === decId); },
   eventsOfDecision(decId) { return this.all("events").filter(ev => ev.decisionId === decId); },
   eventsOfPlan(planId) { return this.all("events").filter(ev => ev.planId === planId); },
@@ -680,6 +719,8 @@ const Store = {
     scan("defects", "Defect", ["code", "title", "description"], e => `#/defects/${e.id}`);
     scan("documents", "Document", ["code", "title", "description", "url", "fileName", "relatedCodes"], e => `#/documents`);
     scan("testRuns", "Test Run Session", ["code", "name", "notes", "operator"], e => `#/testruns/${e.id}`);
+    scan("releases", "Release", ["code", "name", "description", "fixVersion"], e => `#/releases/${e.id}`);
+    scan("builds", "Build", ["code", "label", "description", "cycle"], e => `#/builds/${e.id}`);
     return hits.slice(0, 40);
   }
 };

@@ -33,6 +33,7 @@ Future contributors should also read [AGENTS.md](AGENTS.md). The hardening repor
 | Defects | Bugs against components with severity, a status workflow (Open → In Analysis → Fix In Work → Ready for Retest → Closed), links to the run that found them, and External Links (Jira / Zephyr / share); open Critical/Major defects mark their component Failing |
 | Procedures | Step-by-step execution docs with **entry & exit criteria** (Open → Met → Waived) gating a GO/HOLD readiness indicator |
 | Test Plans | Bundle test cases into campaigns with progress rollup from latest run results |
+| Releases & Builds | Each system tracks its own releases and its own stream of software builds (version label, received date, status, change notes, optional artifact link, Jira Fix Version and Zephyr cycle). Every result records the build it was measured on — defaulting to the system's build under test — and is labeled with how many builds old it is; an older pass still counts. Build pages show what was run on that build and what has not been run yet |
 | Test Runs | Execution log (Pass / Fail / Blocked / In Progress / Waived / Review for Removal); recording a run auto-updates case status |
 | Requirements | Three classes, each with its own section and numbering: **System Requirements** (REQ-###), **PSPECs** (PSPEC-###) and **SW Requirements** (SWR-###). Traced to components, verified by test cases, optionally derived from a parent requirement (flow-down); rollup: Verified / Failing / Covered / No Coverage |
 | Trace Matrix | One requirements × test cases grid per class (System, PSPEC, SW), each showing only the cases that verify its rows, grouped by system with coverage %; cells colored by latest run result, uncovered requirements flagged; filter by class, system or gaps-only |
@@ -68,7 +69,7 @@ Working the tool day to day: **▶ Execute** on a case runs its procedure step-b
 - `js/store.js` — localStorage database + relations + rollups
 - `js/ui.js` — modal forms, toasts, shared fragments
 - `js/views.js` — shared view core: vocabularies, rendering helpers, the `Views` and `Actions` objects
-- `js/pages/*.js` — one file per page area (dashboard, systems, requirements, cases, procedures, plans, risks, documents, defects, decisions, schedule, resources, interchange): its pages, actions and form fields
+- `js/pages/*.js` — one file per page area (dashboard, systems, requirements, cases, procedures, plans, risks, documents, defects, decisions, schedule, resources, interchange, releases): its pages, actions and form fields
 - `js/regression.js` — test run sessions, full regression, removal review
 - `js/guard.js`, `js/fence.js`, `js/commands.js` — validation, write fence, command boundary
 - `js/app.js` — hash router + event wiring

@@ -120,6 +120,26 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
     await page.evaluate(()=>{Views.idsk=window.__idsk;App.go('#/dashboard');});
     console.log('PASS missing page module reports an incomplete install');
 
+    // Releases and builds: add a build through the UI, record a run that defaults to it.
+    const sysId=await page.evaluate(()=>Store.caseSystemId(Store.get('cases','tc-7')));
+    await page.evaluate(()=>App.go('#/releases'));
+    await page.locator(`.rel-sys [data-act="add-build"][data-sys="${sysId}"]`).click();
+    await page.locator('#modal-form input[name="label"]').fill('9.9.9-synthetic');
+    await page.locator('#modal-form select[name="status"]').selectOption('Under Test');
+    await page.locator('#modal-form [type="submit"]').click();
+    await page.waitForFunction(()=>Store.all('builds').some(b=>b.label==='9.9.9-synthetic'));
+    const newBuild=await page.evaluate(()=>Store.all('builds').find(b=>b.label==='9.9.9-synthetic'));
+    assert.equal(newBuild.systemId,sysId);
+    await page.evaluate(()=>App.go('#/cases/tc-7'));
+    await page.locator('.page-actions [data-act="record-run"]').click();
+    assert.equal(await page.locator('#modal-form select[name="buildId"]').inputValue(),newBuild.id,'run form defaults to the build under test');
+    await page.locator('#modal-form [type="submit"]').click();
+    await page.waitForFunction(id=>Store.latestRun('tc-7')?.buildId===id,newBuild.id);
+    assert.match(await page.locator('#view').textContent(),/9\.9\.9-synthetic/);
+    await page.evaluate(id=>App.go('#/builds/'+id),newBuild.id);
+    assert.match(await page.locator('#view').textContent(),/Results On This Build[^]*TC-007/i);
+    console.log('PASS releases and builds: add build, run defaults to it, build page shows the result');
+
     await page.evaluate(()=>App.go('#/requirements'));
     await page.locator('#scope-select').selectOption('sys-3');
     await page.locator('.scope-banner').waitFor();
@@ -178,7 +198,7 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
     await tab.close();await page.reload();await page.waitForFunction(()=>!!Store.db&&!Store._tx);
     console.log('PASS real browser competing tabs and five simultaneous-write races');
 
-    for(const route of ['dashboard','schedule','systems','requirements','cases','trace','idsk','procedures','plans','runs','defects','risks','resources','documents','interchange','sitrep','decisions/dec-1/report','testruns/tr-1','components/cmp-14','ownership']) {
+    for(const route of ['dashboard','schedule','systems','requirements','cases','trace','idsk','procedures','plans','runs','defects','risks','resources','documents','interchange','sitrep','decisions/dec-1/report','testruns/tr-1','components/cmp-14','ownership','releases','releases/rel-1','builds/bld-9']) {
       await page.evaluate(r=>App.go('#/'+r),route);await page.waitForFunction(r=>location.hash==='#/'+r,route);
       assert.doesNotMatch(await page.locator('#view').textContent(),/Something went wrong rendering/);
     }

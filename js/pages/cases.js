@@ -73,7 +73,7 @@ Views.cases = function (params) {
       <td>${plans.map(p => codeLink("plans", p)).join(" ") || `<span class="faint small">—</span>`}</td>
       <td><button class="badge-btn" data-act="cycle-case-status" data-id="${tc.id}" title="Click to cycle status">${badge(tc.status)}</button></td>
       <td>${runDots(tc.id)}</td>
-      <td>${runBadge(Store.latestRun(tc.id))}</td>
+      <td>${(run => runBadge(run) + (buildTag(run) ? `<div class="small" style="margin-top:3px">${buildTag(run)}</div>` : ""))(Store.latestRun(tc.id))}</td>
     </tr>`;
   };
   const head = showOwner => `<thead><tr><th class="bulk-cell"></th><th>Code</th><th>Title</th><th>Procedure</th>${showOwner ? "<th>Component</th>" : ""}<th>Plans</th><th>Status</th><th>History</th><th>Latest Run</th></tr></thead>`;
@@ -156,6 +156,7 @@ Views.caseDetail = function (id) {
       <td><span class="code">${esc(r.code)}</span>${r.extKey ? `<div style="font-size:9.5px;margin-top:1px">${extKeyTag(r.extKey)}</div>` : ""}</td>
       <td class="num">${esc(r.date || "")}</td>
       <td>${badge(r.result)}</td>
+      <td class="small">${buildTag(r) || `<span class="faint">—</span>`}</td>
       <td class="small">${r.measured ? `<span class="mono">${esc(r.measured)}</span>` : `<span class="faint">—</span>`}</td>
       <td>${esc(r.operator || "")}</td>
       <td>${plan ? codeLink("plans", plan) : "—"}${trun ? `<div>${testRunLink(trun)}</div>` : ""}</td>
@@ -204,7 +205,7 @@ Views.caseDetail = function (id) {
       <div>
         ${removalPanel(tc)}
         ${panel("Run History", runRows
-          ? `<div class="table-scroll"><table class="data"><thead><tr><th>Run</th><th>Date</th><th>Result</th><th>Measured</th><th>Operator</th><th>Plan / Test Run</th><th>Notes / Evidence</th><th></th></tr></thead><tbody>${runRows}</tbody></table></div>`
+          ? `<div class="table-scroll"><table class="data"><thead><tr><th>Run</th><th>Date</th><th>Result</th><th>Build</th><th>Measured</th><th>Operator</th><th>Plan / Test Run</th><th>Notes / Evidence</th><th></th></tr></thead><tbody>${runRows}</tbody></table></div>`
           : emptyMsg("Never executed. Record the first run."), "", true)}
       </div>
     </div>
@@ -226,6 +227,8 @@ Views.execute = function (caseId, params = new URLSearchParams()) {
   const entryOpen = entry.filter(x => x.status === "open");
   const ready = entry.length > 0 && entryOpen.length === 0;
   const plans = trun && trun.planId ? [Store.get("plans", trun.planId)].filter(Boolean) : Store.plansOf(tc.id);
+  const execBuildId = trun && trun.buildId !== undefined ? trun.buildId : currentBuildId(Store.caseSystemId(tc));
+  const execBuild = buildField([Store.caseSystemId(tc)], execBuildId);
 
   const steps = (proc.steps || []).map((s, i) => `
     <label class="exec-step" id="exec-step-row-${i}">
@@ -258,6 +261,7 @@ Views.execute = function (caseId, params = new URLSearchParams()) {
             <div class="form-field"><label>Operator</label><input type="text" id="exec-operator" autocomplete="off"></div>
             <div class="form-field"><label>Result</label><select id="exec-result">${RUN_RESULTS.map(r => `<option>${r}</option>`).join("")}</select></div>
             <div class="form-field"><label>Under Plan</label><select id="exec-plan"><option value="">—</option>${Store.all("plans").map(p => `<option value="${p.id}" ${plans[0] && plans[0].id === p.id ? "selected" : ""}>${esc(p.code)} ${esc(p.name)}</option>`).join("")}</select></div>
+            ${execBuild ? `<div class="form-field"><label>${esc(execBuild.label)}</label><select id="exec-build"><option value="">—</option>${execBuild.options.map(o => `<option value="${o.value}" ${o.value === execBuildId ? "selected" : ""}>${esc(o.label)}</option>`).join("")}</select></div>` : ""}
             <div class="form-field full"><label>Measured Value(s)</label><input type="text" id="exec-measured" placeholder="e.g. 18.2 ms P99" autocomplete="off"></div>
             <div class="form-field full"><label>Evidence Refs (one per line)</label><textarea id="exec-evidence" rows="2"></textarea></div>
             <div class="form-field full"><label>Notes / Observations</label><textarea id="exec-notes" rows="4"></textarea></div>
@@ -291,12 +295,15 @@ function caseFields(componentId) {
     { key: "resourceIds", label: "Resources / M&S Assets Used", type: "multicheck", options: Store.all("resources").map(r => ({ value: r.id, code: r.code, label: r.name })) }
   ];
 }
-function runFields(fixedCase) {
+/* `sysId` limits the build choices to that system's stream; blank offers every system's builds. */
+function runFields(fixedCase, sysId, buildId) {
   const f = [];
   if (!fixedCase) f.push({ key: "caseId", label: "Test Case", type: "select", required: true, options: Store.all("cases").map(tc => ({ value: tc.id, label: `${tc.code} ${tc.title}` })) });
+  const build = buildField(sysId ? [sysId] : Store.all("systems").map(s => s.id), buildId);
   f.push(
     { key: "date", label: "Date", type: "date", required: true, half: true, default: new Date().toISOString().slice(0, 10) },
     { key: "result", label: "Result", type: "select", half: true, options: RUN_RESULTS },
+    ...(build ? [build] : []),
     { key: "operator", label: "Operator", half: true },
     { key: "planId", label: "Under Plan", type: "select", half: true, allowEmpty: true, options: Store.all("plans").map(p => ({ value: p.id, label: `${p.code} ${p.name}` })) },
     { key: "measured", label: "Measured Value(s) — e.g. “26 ms P99”", half: true },
@@ -311,7 +318,10 @@ function openRunForm(preset) {
   const tc = fixed ? Store.get("cases", preset.caseId) : null;
   const trun = preset.testRunId ? Store.get("testRuns", preset.testRunId) : null;
   const title = fixed ? `Record Run — ${tc.code}${trun ? ` in ${trun.code || "test run"}` : ""}` : "Record Test Run";
-  Modal.open(title, runFields(fixed), preset, v => {
+  // The build defaults to the test run's build, else the case system's current build.
+  const sysId = tc ? Store.caseSystemId(tc) : "";
+  if (preset.buildId === undefined) preset = Object.assign({}, preset, { buildId: trun && trun.buildId !== undefined ? trun.buildId : currentBuildId(sysId) });
+  Modal.open(title, runFields(fixed, sysId, preset.buildId), preset, v => {
     if (fixed) v.caseId = preset.caseId;
     if (preset.planId && !v.planId) v.planId = preset.planId;
     if (preset.testRunId) v.testRunId = preset.testRunId;
@@ -387,7 +397,7 @@ Object.assign(Actions, {
   "record-run-any": () => openRunForm({}),
   "edit-run": id => {
     const r = Store.get("runs", id);
-    Modal.open(`Edit ${r.code}`, runFields(), r, v => {
+    Modal.open(`Edit ${r.code}`, runFields(false, Store.ownerOf("runs", r), r.buildId), r, v => {
       Store.update("runs", id, v); Toast.show("Run updated"); App.render();
     });
   },
@@ -424,6 +434,7 @@ Object.assign(Actions, {
       result, measured: val("exec-measured"), evidence: val("exec-evidence"), notes
     };
     if (trun) record.testRunId = trun.id;
+    if (document.getElementById("exec-build")) record.buildId = val("exec-build");
     const run = Store.add("runs", record);
 
     Toast.show(`${run.code} recorded — ${result}`);

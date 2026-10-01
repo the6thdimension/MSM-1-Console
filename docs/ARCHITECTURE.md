@@ -85,6 +85,11 @@ erDiagram
   SYSTEM o|--o{ TEST_RUN : regressed_by
   TEST_RUN }o--o{ CASE : freezes_scope_of
   TEST_RUN o|--o{ RUN : groups_results
+  SYSTEM o|--o{ RELEASE : tracks
+  SYSTEM o|--o{ BUILD : build_stream
+  RELEASE o|--o{ BUILD : contains
+  BUILD o|--o{ RUN : measured_on
+  BUILD o|--o{ TEST_RUN : under_test
   COMPONENT o|--o{ DEFECT : affected_by
   CASE }o--o{ DEFECT : linked_to
   RUN o|--o{ DEFECT : discovery_run
@@ -105,7 +110,9 @@ cycles are rejected. Requirements carry an optional class (System, PSPEC, SW) an
 may flow down from parents through `derivedFromIds`; the trace matrix draws one grid
 per class. Flow-down never feeds the verification rollup. A test run session stores its frozen case list; each case's
 result in it is an ordinary run carrying `testRunId`, so per-case history and
-every existing rollup keep working unchanged. Requirements, procedures, plans,
+every existing rollup keep working unchanged. Each system has its own releases and
+build stream; a run optionally records the build it was measured on (`buildId`).
+Builds label results with their age but never change a rollup. Requirements, procedures, plans,
 test runs, risks, defects, decisions, events, documents and resources may carry an
 owning `systemId`; blank means program-level. Ownership drives only which records
 the system scope lists, never relationships or computed status. Each criterion belongs to a procedure **or** a plan through

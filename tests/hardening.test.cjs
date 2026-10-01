@@ -388,6 +388,51 @@ test('every page module is loaded by index.html after the views core and before 
   const h=harness();
   for(const a of ['add-requirement','add-event','add-extlink','bulk-status','add-doc-link','del-risk','add-defect-case'])assert.equal(vm.runInContext(`typeof Actions[${JSON.stringify(a)}]`,h.ctx),'function',`${a} is registered`);
 });
+test('releases and builds: per-system streams, current build, builds-old age, cleanup and old data untouched',async()=>{
+  const h=await ready(),S=h.Store,run=src=>vm.runInContext(src,h.ctx);
+  // Existing data: nothing is added to runs and nothing new is shown until builds exist.
+  assert.ok(S.all('runs').every(r=>r.buildId===undefined),'no buildId defaulted onto existing runs');
+  assert.deepEqual(copy(S.all('builds')),[]);
+  assert.equal(run(`buildTag(Store.all('runs')[0])`),'','no build tag before a system has builds');
+  const tc=S.all('cases').find(c=>S.latestRun(c.id)&&S.caseSystemId(c)),sys=S.caseSystemId(tc),other=S.all('systems').find(s=>s.id!==sys).id;
+  let rel,b1,b2,b3,bx,otherRel;
+  await S.command('builds',()=>{
+    rel=S.add('releases',{name:'Synthetic R1',systemId:sys,status:'In Test',targetDate:'2026-11-01',releasedDate:'',decisionId:'',fixVersion:'',description:''});
+    otherRel=S.add('releases',{name:'Other R1',systemId:other,status:'Planning',targetDate:'',releasedDate:'',decisionId:'',fixVersion:'',description:''});
+    b1=S.add('builds',{label:'1.0.0',systemId:sys,releaseId:rel.id,status:'Accepted',received:'2026-08-01',url:'',cycle:'',description:''});
+    b2=S.add('builds',{label:'1.0.1',systemId:sys,releaseId:rel.id,status:'Under Test',received:'2026-09-01',url:'',cycle:'',description:''});
+    bx=S.add('builds',{label:'1.0.2',systemId:sys,releaseId:rel.id,status:'Rejected',received:'2026-09-10',url:'',cycle:'',description:''});
+    b3=S.add('builds',{label:'1.0.3',systemId:sys,releaseId:rel.id,status:'Received',received:'2026-09-20',url:'',cycle:'',description:''});
+  });
+  assert.match(rel.code,/^REL-\d{2}$/);assert.match(b1.code,/^BLD-\d{3}$/);
+  assert.equal(S.currentBuild(sys).id,b2.id,'Under Test wins over a newer Received build');
+  assert.deepEqual(copy(S.buildsOf(sys).map(b=>b.label)),['1.0.3','1.0.2','1.0.1','1.0.0']);
+  const r=S.latestRun(tc.id);
+  const statuses=()=>S.all('requirements').map(q=>S.reqStatus(q.id)).join()+'|'+S.all('components').map(c=>S.componentStatus(c.id)).join();
+  const before=statuses();
+  await S.command('tag',()=>S.update('runs',r.id,{buildId:b1.id}));
+  assert.equal(statuses(),before,'an older-build result still counts: tagging a build never changes rollups');
+  assert.equal(S.buildsBehind(S.get('runs',r.id)),2,'rejected builds never count as newer');
+  assert.match(run(`buildTag(Store.get('runs',${JSON.stringify(r.id)}))`),/1\.0\.0[^]*2 builds old/);
+  // A session defaults to the system's current build.
+  let t;await S.command('session',()=>{t=run(`startTestRun({name:'s',systemId:${JSON.stringify(sys)},caseIds:[${JSON.stringify(tc.id)}]})`);});
+  assert.equal(t.buildId,b2.id);
+  // Validation: same-system release, known status, existing build.
+  const bad=copy(S.db);bad.builds.find(b=>b.id===b3.id).releaseId=otherRel.id;assert.throws(()=>h.DataGuard.validate(bad),/different system/);
+  const bad2=copy(S.db);bad2.builds[0].status='Shipping';assert.throws(()=>h.DataGuard.validate(bad2),/builds/);
+  const bad3=copy(S.db);bad3.runs[0].buildId='bld-missing';assert.throws(()=>h.DataGuard.validate(bad3),/missing builds reference/);
+  // Pages render.
+  for(const html of [h.Views.releases(new URLSearchParams()),h.Views.releaseDetail(rel.id),h.Views.buildDetail(b1.id),h.Views.systemDetail(sys)])assert.equal(typeof html,'string');
+  assert.match(h.Views.buildDetail(b1.id),new RegExp(tc.code));
+  assert.match(h.Views.cases(new URLSearchParams()),/builds old/);
+  // Deleting keeps history: results lose only the build link; builds outlive their release.
+  await S.command('del build',()=>S.remove('builds',b1.id));
+  assert.equal(S.get('runs',r.id).buildId,'');
+  await S.command('del release',()=>S.remove('releases',rel.id));
+  assert.equal(S.get('builds',b2.id).releaseId,'');
+  await S.command('del system',()=>S.remove('systems',sys));
+  assert.equal(S.get('builds',b2.id).systemId,'','builds become program-level, not deleted');h.DataGuard.validate(S.db);
+});
 test('runtime shell has no remote assets and disallows background connections',()=>{
   const html=fs.readFileSync(path.join(root,'index.html'),'utf8');assert.doesNotMatch(html,/(?:src|href)="https?:/);assert.match(html,/connect-src 'none'/);
   assert.doesNotMatch(fs.readFileSync(path.join(root,'js/views.js'),'utf8'),/fetch\(/);

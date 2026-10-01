@@ -10,7 +10,7 @@ const SEED_DB = {
   meta: {
     program: "MSM-1 Virtual Proving Ground",
     version: 2,
-    seq: { systems: 3, components: 15, requirements: 19, "requirements.REQ": 12, "requirements.PSPEC": 3, "requirements.SWR": 4, cases: 15, procedures: 5, criteria: 31, plans: 2, runs: 9, risks: 7, mitigations: 13, resources: 5, decisions: 3, events: 9, notes: 5, defects: 4, documents: 3, testRuns: 1 }
+    seq: { systems: 3, components: 15, requirements: 19, "requirements.REQ": 12, "requirements.PSPEC": 3, "requirements.SWR": 4, cases: 15, procedures: 5, criteria: 31, plans: 2, runs: 9, risks: 7, mitigations: 13, resources: 5, decisions: 3, events: 9, notes: 5, defects: 4, documents: 3, testRuns: 1, releases: 3, builds: 9 }
   },
 
   systems: [
@@ -283,15 +283,15 @@ const SEED_DB = {
   ],
 
   runs: [
-    { id: "run-1", code: "RUN-001", caseId: "tc-4",  planId: "plan-1", date: "2026-08-14", operator: "M. Reyes",   result: "Pass", measured: "1.8% torque dev / 2.4% fuel dev", evidence: "VV-PT-01.pdf\ndyno-cmp-0814.csv", notes: "Torque curve within 1.8%, fuel burn within 2.4% of dyno referent. Report VV-PT-01 archived." },
-    { id: "run-2", code: "RUN-002", caseId: "tc-7",  planId: "plan-1", date: "2026-08-19", operator: "A. Chen",    result: "Pass", notes: "Bit-exact replay over 30 min confirmed on two configurations. Hash logs archived." },
-    { id: "run-3", code: "RUN-003", caseId: "tc-6",  planId: "plan-2", date: "2026-08-21", operator: "A. Chen",    result: "Pass", measured: "71 FPS sustained (64 FPS transient min)", evidence: "perf-0821.json", notes: "Sustained 71 FPS at max density; transient dips to 64 FPS during fault bursts — within spec." },
-    { id: "run-4", code: "RUN-004", caseId: "tc-8",  planId: "plan-2", testRunId: "tr-1", date: "2026-08-27", operator: "J. Novak",   result: "Pass", measured: "41 ms worst path", evidence: "estop-timing-0827.csv", notes: "Worst path 41 ms (station 2 → sim freeze). All stations well under 100 ms." },
-    { id: "run-5", code: "RUN-005", caseId: "tc-9",  planId: "plan-2", testRunId: "tr-1", date: "2026-08-27", operator: "J. Novak",   result: "Pass", notes: "All interlocks inhibit correctly; comms-watchdog annunciation delayed ~1 s (cosmetic, OBS-007)." },
-    { id: "run-6", code: "RUN-006", caseId: "tc-3",  planId: "plan-1", date: "2026-09-01", operator: "M. Reyes",   result: "Fail", measured: "7.2% RMS (washboard, susp travel)", evidence: "vvcmp-0901/\nDEF-001", notes: "Washboard maneuver RMS error 7.2% (suspension travel channel). On-road maneuvers all ≤ 3.1%. See RSK-001 — tire model off-road regime." },
-    { id: "run-7", code: "RUN-007", caseId: "tc-1",  planId: "plan-2", testRunId: "tr-1", date: "2026-09-04", operator: "J. Novak",   result: "Fail", measured: "26 ms P99 (transient load)", evidence: "lat-0904.parquet\nDEF-002", notes: "P99 latency 26 ms under transient load (render thread contention). Idle/full-scene within spec. See RSK-002." },
-    { id: "run-8", code: "RUN-008", caseId: "tc-5",  planId: "plan-1", date: "2026-09-08", operator: "M. Reyes",   result: "In Progress", measured: "+1.7 °C worst dev (6/10 segments)", evidence: "", notes: "6 of 10 duty-cycle segments compared; worst deviation so far +1.7 °C on return line." },
-    { id: "run-9", code: "RUN-009", caseId: "tc-6",  planId: "plan-2", date: "2026-09-06", operator: "A. Chen",    result: "Pass", measured: "74 FPS sustained", evidence: "perf-0906.json", notes: "Re-run after shader batching optimization; sustained rate up from 71 to 74 FPS at max density." }
+    { id: "run-1", code: "RUN-001", caseId: "tc-4", buildId: "bld-5",  planId: "plan-1", date: "2026-08-14", operator: "M. Reyes",   result: "Pass", measured: "1.8% torque dev / 2.4% fuel dev", evidence: "VV-PT-01.pdf\ndyno-cmp-0814.csv", notes: "Torque curve within 1.8%, fuel burn within 2.4% of dyno referent. Report VV-PT-01 archived." },
+    { id: "run-2", code: "RUN-002", caseId: "tc-7", buildId: "bld-2",  planId: "plan-1", date: "2026-08-19", operator: "A. Chen",    result: "Pass", notes: "Bit-exact replay over 30 min confirmed on two configurations. Hash logs archived." },
+    { id: "run-3", code: "RUN-003", caseId: "tc-6", buildId: "bld-2",  planId: "plan-2", date: "2026-08-21", operator: "A. Chen",    result: "Pass", measured: "71 FPS sustained (64 FPS transient min)", evidence: "perf-0821.json", notes: "Sustained 71 FPS at max density; transient dips to 64 FPS during fault bursts — within spec." },
+    { id: "run-4", code: "RUN-004", caseId: "tc-8", buildId: "bld-9",  planId: "plan-2", testRunId: "tr-1", date: "2026-08-27", operator: "J. Novak",   result: "Pass", measured: "41 ms worst path", evidence: "estop-timing-0827.csv", notes: "Worst path 41 ms (station 2 → sim freeze). All stations well under 100 ms." },
+    { id: "run-5", code: "RUN-005", caseId: "tc-9", buildId: "bld-9",  planId: "plan-2", testRunId: "tr-1", date: "2026-08-27", operator: "J. Novak",   result: "Pass", notes: "All interlocks inhibit correctly; comms-watchdog annunciation delayed ~1 s (cosmetic, OBS-007)." },
+    { id: "run-6", code: "RUN-006", caseId: "tc-3", buildId: "bld-6",  planId: "plan-1", date: "2026-09-01", operator: "M. Reyes",   result: "Fail", measured: "7.2% RMS (washboard, susp travel)", evidence: "vvcmp-0901/\nDEF-001", notes: "Washboard maneuver RMS error 7.2% (suspension travel channel). On-road maneuvers all ≤ 3.1%. See RSK-001 — tire model off-road regime." },
+    { id: "run-7", code: "RUN-007", caseId: "tc-1", buildId: "bld-9",  planId: "plan-2", testRunId: "tr-1", date: "2026-09-04", operator: "J. Novak",   result: "Fail", measured: "26 ms P99 (transient load)", evidence: "lat-0904.parquet\nDEF-002", notes: "P99 latency 26 ms under transient load (render thread contention). Idle/full-scene within spec. See RSK-002." },
+    { id: "run-8", code: "RUN-008", caseId: "tc-5", buildId: "bld-6",  planId: "plan-1", date: "2026-09-08", operator: "M. Reyes",   result: "In Progress", measured: "+1.7 °C worst dev (6/10 segments)", evidence: "", notes: "6 of 10 duty-cycle segments compared; worst deviation so far +1.7 °C on return line." },
+    { id: "run-9", code: "RUN-009", caseId: "tc-6", buildId: "bld-3",  planId: "plan-2", date: "2026-09-06", operator: "A. Chen",    result: "Pass", measured: "74 FPS sustained", evidence: "perf-0906.json", notes: "Re-run after shader batching optimization; sustained rate up from 71 to 74 FPS at max density." }
   ],
 
   /* Documents: external links or embedded uploads (dataUrl). */
@@ -312,9 +312,39 @@ const SEED_DB = {
 
   /* Bugs / defects. severity: Critical | Major | Minor | Cosmetic.
      status: Open | In Analysis | Fix In Work | Ready for Retest | Closed | Deferred */
+  /* Releases: what each system is tracking toward. Builds: the software drops each system tests.
+     Each system has its own build stream; a run records the build it was measured on (buildId). */
+  releases: [
+    { id: "rel-1", code: "REL-01", systemId: "sys-1", name: "Sim Core R1.0", status: "In Test", targetDate: "2026-11-13", releasedDate: "",
+      decisionId: "dec-2", fixVersion: "SIMCORE-1.0", description: "First accredited simulation-core release: deterministic replay, fault injection and the render-thread isolation fix." },
+    { id: "rel-2", code: "REL-02", systemId: "sys-2", name: "Vehicle Models R2.4", status: "In Test", targetDate: "2026-10-16", releasedDate: "",
+      decisionId: "dec-1", fixVersion: "VM-2.4", description: "Vehicle dynamics and tire models submitted for the M&S accreditation decision." },
+    { id: "rel-3", code: "REL-03", systemId: "sys-3", name: "HWIL R1.2", status: "In Test", targetDate: "2026-11-20", releasedDate: "",
+      decisionId: "dec-3", fixVersion: "", description: "HWIL bridge and safety-chain software for the Increment 1 delivery gate." }
+  ],
+  builds: [
+    { id: "bld-1", code: "BLD-001", systemId: "sys-1", releaseId: "", label: "0.8.0", status: "Accepted", received: "2026-07-20", url: "", cycle: "",
+      description: "Pre-release integration build used for procedure dry runs." },
+    { id: "bld-2", code: "BLD-002", systemId: "sys-1", releaseId: "rel-1", label: "0.9.0", status: "Accepted", received: "2026-08-03", url: "", cycle: "SIM 0.9.0 regression",
+      description: "Tagged 0.9 build deployed to the HWIL rig (EVT-01); baseline for the V&V campaign." },
+    { id: "bld-3", code: "BLD-003", systemId: "sys-1", releaseId: "rel-1", label: "0.9.1", status: "Under Test", received: "2026-09-02", url: "", cycle: "",
+      description: "Render-thread priority decoupling for DEF-002 (RSK-002); replay checksum logging." },
+    { id: "bld-4", code: "BLD-004", systemId: "sys-1", releaseId: "rel-1", label: "0.9.2-rc1", status: "Received", received: "2026-09-28", url: "", cycle: "",
+      description: "Release candidate 1: core isolation for the bus bridge thread. Not yet smoke tested." },
+    { id: "bld-5", code: "BLD-005", systemId: "sys-2", releaseId: "", label: "VM 2.3.0", status: "Accepted", received: "2026-07-28", url: "", cycle: "",
+      description: "Previous vehicle-model release; baseline dynamics." },
+    { id: "bld-6", code: "BLD-006", systemId: "sys-2", releaseId: "rel-2", label: "VM 2.4.0", status: "Under Test", received: "2026-08-30", url: "", cycle: "",
+      description: "Updated lug stiffness table and tire contact model for the washboard referent (DEF-001 candidate fix)." },
+    { id: "bld-7", code: "BLD-007", systemId: "sys-3", releaseId: "", label: "HWIL 1.1.0", status: "Accepted", received: "2026-08-03", url: "", cycle: "",
+      description: "Bridge and safety-chain software delivered with the rig." },
+    { id: "bld-8", code: "BLD-008", systemId: "sys-3", releaseId: "rel-3", label: "HWIL 1.2.0", status: "Rejected", received: "2026-08-22", url: "", cycle: "",
+      description: "Bus bridge crashed on start-up; failed smoke test and was withdrawn." },
+    { id: "bld-9", code: "BLD-009", systemId: "sys-3", releaseId: "rel-3", label: "HWIL 1.2.1", status: "Under Test", received: "2026-08-25", url: "", cycle: "HWIL 1.2.1 regression",
+      description: "Start-up fix for 1.2.0; e-stop freeze handler and interlock annunciation changes." }
+  ],
   /* Test run sessions: a frozen case scope; each case result is a run with testRunId. */
   testRuns: [
-    { id: "tr-1", code: "TR-001", name: "HWIL Integration full regression", operator: "J. Novak", status: "Active",
+    { id: "tr-1", code: "TR-001", buildId: "bld-9", name: "HWIL Integration full regression", operator: "J. Novak", status: "Active",
       planId: "", systemId: "sys-3", componentId: "", caseIds: ["tc-1", "tc-2", "tc-8", "tc-9", "tc-10", "tc-12"],
       createdAt: "2026-08-25T13:00:00.000Z", startedAt: "2026-08-25T13:00:00.000Z", completedAt: "",
       notes: "Scope frozen at start: every active case in SYS-03 HWIL Integration, including the E-Stop Network subcomponent." }
