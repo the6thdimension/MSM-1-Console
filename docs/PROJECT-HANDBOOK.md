@@ -10,11 +10,14 @@ This is a browser-based Test & Evaluation management console. It connects the
 question “what must the program demonstrate?” to test procedures, execution
 results, defects, risks, resources, schedules, and decision evidence.
 
-The bundled example is the **MSM-1 Virtual Proving Ground**, a simulation and
-hardware-in-the-loop test program for a mobile sentry vehicle. The console
-manages that program's T&E information; it does not implement the simulation,
-control the truck, collect live telemetry, or execute automated hardware tests.
-Its entities and blank-program action also support other T&E programs.
+The bundled example is the **VANGUARD RIDGE MILSIM Training Suite**, a fictional
+military-simulation training game with a Desktop Tactical Trainer, an Immersive
+Virtual Trainer (VR pod with treadmill and a physical safety chain) and the Shared
+Simulation Services both run on. It is synthetic demo data built for hand testing;
+[the demo guide](DEMO-GUIDE.md) maps each workflow to the records that exercise it.
+The console manages a program's T&E information; it does not run the simulation,
+drive hardware, collect live telemetry, or execute automated tests. Its entities
+and blank-program action support other T&E programs.
 
 Primary users are test engineers, test leads, V&V staff, resource owners, and
 program decision makers. These are usage roles, not implemented access roles.

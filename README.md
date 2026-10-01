@@ -52,7 +52,7 @@ Everything is deep-linked — every code (SYS-01, TC-003, RSK-001…) is clickab
 
 - **Export** — download the whole database as JSON
 - **Import** — restore from an exported JSON file
-- **Reset** — restore the demo dataset (truck-in-the-loop sim example)
+- **Reset** — restore the demo dataset (VANGUARD RIDGE MILSIM training game; see [the demo guide](docs/DEMO-GUIDE.md) for what to try)
 - **Start Blank Program** (Interchange → Full Database) — wipe everything and name a fresh program for real use (undo-able for 10 s; export first if in doubt)
 
 Press <kbd>/</kbd> to jump to global search, <kbd>Ctrl</kbd>+<kbd>K</kbd> for the command palette (jump to anything or quick-create). Deletes can be undone from the toast for 10 seconds. Each decision has a print-clean **Decision Package** report (⎙ on the decision page). A daily snapshot powers the dashboard progress trend (passing, verified, open defects).
@@ -65,7 +65,7 @@ Working the tool day to day: **▶ Execute** on a case runs its procedure step-b
 
 - `index.html` — shell
 - `styles.css` — all styling
-- `js/seed.js` — demo dataset (MSM-1 Mobile Sentry Module)
+- `js/seed.js` — demo dataset (VANGUARD RIDGE MILSIM Training Suite: desktop trainer, immersive VR trainer, shared simulation services)
 - `js/store.js` — localStorage database + relations + rollups
 - `js/ui.js` — modal forms, toasts, shared fragments
 - `js/views.js` — shared view core: vocabularies, rendering helpers, the `Views` and `Actions` objects
