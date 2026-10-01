@@ -106,6 +106,20 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
     assert.ok(await page.locator('.trace-grid-wrap.cls-sw tr.uncovered').count()>=1,'uncovered SW requirement flagged in its own grid');
     console.log('PASS requirement classes, derived requirement input, per-class trace grids');
 
+    await page.setViewportSize({width:1000,height:800});
+    await go('#/trace');
+    const farIdx=await page.evaluate(()=>{const b=[...document.querySelectorAll('button[data-act="trace-jump"]')];let best=-1,x=-1;b.forEach((el,i)=>{const m=[...el.closest('tr').querySelectorAll('td.cell')].filter(td=>td.querySelector('.tmark')).at(-1);if(m&&m.offsetLeft>x){x=m.offsetLeft;best=i;}});return best;});
+    const jump=page.locator('button[data-act="trace-jump"]').nth(farIdx);
+    const markInView=()=>page.evaluate(i=>{const b=document.querySelectorAll('button[data-act="trace-jump"]')[i],tr=b.closest('tr'),w=b.closest('.trace-scroll');const c=[...tr.querySelectorAll('td.cell')].filter(td=>td.querySelector('.tmark'))[Number(b.dataset.i)];if(!c)return false;const l=c.offsetLeft-w.scrollLeft,r=tr.getBoundingClientRect();return l>=tr.querySelector('.req-col').offsetWidth-2&&l+c.offsetWidth<=w.clientWidth-tr.querySelector('.stat-col').offsetWidth+2&&r.top>=0&&r.bottom<=innerHeight;},farIdx);
+    const marks=await page.evaluate(i=>[...document.querySelectorAll('button[data-act="trace-jump"]')[i].closest('tr').querySelectorAll('td.cell .tmark')].length,farIdx);
+    for(let k=0;k<Math.min(marks,2);k++){await jump.click();let ok=false;for(let t=0;t<20&&!ok;t++){ok=await markInView();if(!ok)await page.waitForTimeout(50);}assert.ok(ok,`rollup jump ${k+1} brings its case mark into view`);}
+    assert.ok(await page.locator('.trace-scroll thead th.tc-col.jump-flash').count()>=1,'the case column header flashes');
+    await page.setViewportSize({width:1440,height:1000});
+    await go('#/requirements?by=component');
+    assert.ok(await page.locator('tr.req-group.comp').count()>=1);
+    assert.equal((await page.locator('.seg-toggle a.active').textContent()).trim(),'By component');
+    console.log('PASS trace rollup jump scrolls to its marks; requirements group by component');
+
     await go('#/defects/def-1');
     await page.locator('#extlink-url').fill('https://example.test/browse/BUG-42');
     await page.locator('#extlink-label').fill('Synthetic bug');

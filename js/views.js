@@ -229,7 +229,15 @@ function planCounts(plan) {
   return resultCounts((plan.caseIds || []).map(id => Store.latestRun(id)));
 }
 
-const COMP_ST_SLUG = { "Passing": "passing", "Failing": "failing", "In Test": "intest", "Untested": "untested" };
+/* A stable accent color per system (by code order), used to tell systems apart where
+   their records are listed together. Chosen to differ from the requirement-class accents. */
+const SYSTEM_HUES = ["#5aa9ff", "#ff7a9c", "#a6d65a", "#f2c94c", "#56d6c0", "#c69cff", "#ff9f5a", "#9aa7ff"];
+function systemHue(sysId) {
+  const i = Store.all("systems").slice().sort(Store.byCodeOrder).findIndex(s => s.id === sysId);
+  return i < 0 ? "var(--ink-faint)" : SYSTEM_HUES[i % SYSTEM_HUES.length];
+}
+
+const COMP_ST_SLUG ={ "Passing": "passing", "Failing": "failing", "In Test": "intest", "Untested": "untested" };
 
 function renderCritList(list) {
   return list.length ? `<div class="crit-list">${list.map(c => `

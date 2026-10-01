@@ -2,6 +2,20 @@
    Requirements register, requirement detail and trace matrix.
    Page module: adds to Views and Actions; loaded after js/views.js.
    ============================================================ */
+/* Verification counts and a bare meter for a group header. */
+function reqCounts(reqs) {
+  const c = { verified: 0, failing: 0, covered: 0, uncovered: 0 };
+  for (const r of reqs) c[Store.reqStatus(r.id)]++;
+  return `${c.verified} verified · ${c.failing} failing · ${c.covered} covered · ${c.uncovered} no coverage`;
+}
+function reqMeter(reqs) {
+  const c = { verified: 0, failing: 0, covered: 0, uncovered: 0 };
+  for (const r of reqs) c[Store.reqStatus(r.id)]++;
+  const total = reqs.length || 1;
+  const seg = (n, cls) => n ? `<span class="${cls}" style="width:${(n / total * 100).toFixed(1)}%"></span>` : "";
+  return `<span class="meter">${seg(c.verified, "m-pass")}${seg(c.failing, "m-fail")}${seg(c.covered, "m-covered")}${seg(c.uncovered, "m-open")}</span>`;
+}
+
 /* Verification spread for a set of requirements, as a compact bar plus counts. */
 function reqStatusBar(reqs) {
   const c = { verified: 0, failing: 0, covered: 0, uncovered: 0 };
@@ -23,15 +37,19 @@ Views.requirements = function (params) {
   if (q) reqs = reqs.filter(r => [r.code, r.title, r.text, r.extKey].join(" ").toLowerCase().includes(q));
   const filtering = !!(typeF || covF || q);
 
-  const row = r => {
+  const byComp = params.get("by") === "component";
+  /* `extra` adds a note under the requirement (used for "also traced to" in component mode). */
+  const row = (r, extra = "") => {
     const cases = Store.casesOfRequirement(r.id).filter(tc => tc.status !== "Retired");
     const parents = Store.derivedParents(r), kids = Store.derivedChildren(r.id).length;
-    return `<tr>
+    const owner = Store.ownerOf("requirements", r);
+    return `<tr class="req-row" style="--sysc:${systemHue(owner)}">
       <td>${codeLink("requirements", r)}${r.extKey ? `<div class="faint mono" style="font-size:9.5px">${esc(r.extKey)}</div>` : ""}</td>
       <td class="req-main">
         <a class="req-name" href="#/requirements/${r.id}">${esc(r.title)}</a> ${badge(r.priority)}
         <div class="req-text">${esc(r.text)}</div>
         ${parents.length || kids ? `<div class="req-flow">${parents.map(p => `<a class="flow-chip up" href="#/requirements/${p.id}" title="Derived from ${esc(p.title)}">↑ ${esc(p.code)}</a>`).join("")}${kids ? `<span class="flow-chip down" title="Requirements derived from this one">↓ ${kids} derived</span>` : ""}</div>` : ""}
+        ${extra}
       </td>
       <td class="col-type">${badge(r.type)}<div style="margin-top:4px">${badge(r.method, "b-grey")}</div></td>
       <td class="col-measure">${r.measure && r.measure !== "None" ? badge(r.measure) : `<span class="faint small">—</span>`}${r.threshold ? `<div class="mono small" style="margin-top:4px">${esc(r.threshold)}</div>` : ""}</td>
@@ -41,18 +59,53 @@ Views.requirements = function (params) {
   };
   const table = body => `<div class="table-scroll"><table class="data req-table"><thead><tr><th>Code</th><th>Requirement</th><th class="col-type">Type / Method</th><th class="col-measure">Measure / Threshold</th><th>Cases</th><th>Status</th></tr></thead><tbody>${body}</tbody></table></div>`;
 
-  /* Within a class: group rows by owning system when viewing the whole program. One table
-     per class keeps the columns aligned across groups. */
+  /* A system group header: the system's accent, name, count and a compact status bar. */
+  const sysHead = (sysId, part, label) => {
+    const s = sysId ? Store.get("systems", sysId) : null;
+    return `<tr class="req-group sys" style="--sysc:${systemHue(sysId)}"><td colspan="6"><div class="rg-head">
+      <span class="rg-dot"></span>${s ? `<a href="#/systems/${s.id}"><span class="code">${esc(s.code)}</span> ${esc(s.name)}</a>` : `<span>Program-level / shared</span>`}
+      <span class="faint mono small">${label}</span>${part.length ? `<span class="rg-bar" title="${esc(reqCounts(part))}">${reqMeter(part)}</span>` : ""}</div></td></tr>`;
+  };
+  const sysOrder = Store.all("systems").slice().sort(Store.byCodeOrder).map(s => s.id).concat([""]);
+
+  /* Within a class: group rows by owning system (or by traced component when toggled).
+     One table per class keeps the columns aligned across groups. */
   const grouped = list => {
+    if (byComp) {
+      // Every traced component, in each system's tree order; a requirement traced to several
+      // components appears under each, noting the others.
+      const used = new Set(list.flatMap(r => r.componentIds || []));
+      let body = "";
+      for (const sysId of sysOrder.filter(Boolean)) {
+        const comps = Store.componentTree(sysId).filter(e => used.has(e.comp.id));
+        if (!comps.length) continue;
+        const inSys = list.filter(r => (r.componentIds || []).some(c => comps.some(e => e.comp.id === c)));
+        body += sysHead(sysId, inSys, `${comps.length} component${comps.length === 1 ? "" : "s"}`);
+        for (const { comp, depth } of comps) {
+          const part = list.filter(r => (r.componentIds || []).includes(comp.id));
+          body += `<tr class="req-group comp" style="--sysc:${systemHue(sysId)};--depth:${depth}"><td colspan="6">${depth ? "↳ " : ""}<a href="#/components/${comp.id}"><span class="code">${esc(comp.code)}</span> ${esc(comp.name)}</a> <span class="faint mono small">${part.length}</span></td></tr>`;
+          body += part.map(r => {
+            const others = (r.componentIds || []).filter(c => c !== comp.id).map(c => Store.get("components", c)).filter(Boolean);
+            return row(r, others.length ? `<div class="req-also">also traced to ${others.map(o => `<a href="#/components/${o.id}">${esc(o.code)}</a>`).join(", ")}</div>` : "");
+          }).join("");
+        }
+      }
+      const none = list.filter(r => !(r.componentIds || []).length);
+      if (none.length) body += `<tr class="req-group comp none"><td colspan="6">No traced component <span class="faint mono small">${none.length}</span></td></tr>${none.map(r => row(r)).join("")}`;
+      return table(body);
+    }
     const owners = [...new Set(list.map(r => Store.ownerOf("requirements", r)))];
-    if (Scope.system || owners.length < 2) return table(list.map(row).join(""));
-    const order = Store.all("systems").slice().sort(Store.byCodeOrder).map(s => s.id).concat([""]);
-    return table(order.filter(o => owners.includes(o)).map(o => {
-      const s = o ? Store.get("systems", o) : null;
+    if (Scope.system || owners.length < 2) return table(list.map(r => row(r)).join(""));
+    return table(sysOrder.filter(o => owners.includes(o)).map(o => {
       const part = list.filter(r => Store.ownerOf("requirements", r) === o);
-      return `<tr class="req-group"><td colspan="6">${s ? `<a href="#/systems/${s.id}"><span class="code">${esc(s.code)}</span> ${esc(s.name)}</a>` : "Program-level / shared"} <span class="faint mono small">${part.length}</span></td></tr>${part.map(row).join("")}`;
+      return sysHead(o, part, `${part.length} requirement${part.length === 1 ? "" : "s"}`) + part.map(r => row(r)).join("");
     }).join(""));
   };
+  const toggle = ["system", "component"].map(k => {
+    const p = new URLSearchParams(params); k === "component" ? p.set("by", "component") : p.delete("by");
+    const qs = p.toString();
+    return `<a class="${(k === "component") === byComp ? "active" : ""}" href="#/requirements${qs ? "?" + qs : ""}">By ${k}</a>`;
+  }).join("");
 
   const classes = clsF ? Store.REQ_CLASSES.filter(c => c.key === clsF) : Store.REQ_CLASSES;
   const sections = classes.map(c => {
@@ -79,7 +132,8 @@ Views.requirements = function (params) {
   return `
     ${pageHead([{ label: "Requirements" }], "Requirements", "",
       "System requirements, PSPECs and SW requirements — each traced to components, verified by test cases, and optionally derived from a higher-level requirement. Status reflects the latest run of each verifying case.")}
-    <div class="req-tabs">${tab("", "All")}${Store.REQ_CLASSES.map(c => tab(c.key, c.label)).join("")}</div>
+    <div class="req-tabs">${tab("", "All")}${Store.REQ_CLASSES.map(c => tab(c.key, c.label)).join("")}
+      <span class="seg-toggle" title="Group requirement rows by owning system or by the components they are traced to"><span class="faint small">Group rows</span>${toggle}</span></div>
     <div class="filter-bar">
       <input type="search" data-filter="q" placeholder="Filter by code, title, text…" value="${esc(params.get("q") || "")}">
       <select data-filter="type"><option value="">All types</option>${REQ_TYPES.map(t => `<option ${typeF === t ? "selected" : ""}>${t}</option>`).join("")}</select>
@@ -251,7 +305,7 @@ function traceGrid(rows, groups) {
     return `<tr class="${st === "uncovered" ? "uncovered" : ""}">
       <td class="req-col">${codeLink("requirements", r)}<span class="req-title">${esc(r.title)}</span>${parents.length ? `<span class="req-parent">↑ ${parents.map(p => esc(p.code)).join(", ")}</span>` : ""}</td>
       ${allCols.length ? cells : `<td class="cell empty-cols"><span class="faint small">no verifying test cases</span></td>`}
-      <td class="stat-col">${badge(st)}<div class="faint mono" style="margin-top:2px">${linked.size} case${linked.size === 1 ? "" : "s"}</div></td>
+      <td class="stat-col"><button class="badge-btn" data-act="trace-jump" title="${linked.size ? `Scroll to its test case mark${linked.size > 1 ? "s — click again for the next" : ""}` : "No test case verifies this requirement yet"}">${badge(st)}</button><div class="faint mono" style="margin-top:2px">${linked.size} case${linked.size === 1 ? "" : "s"}</div></td>
     </tr>`;
   }).join("");
   return `<div class="trace-scroll"><table class="trace">
@@ -282,7 +336,30 @@ function requirementFields(selfId) {
   ];
 }
 
+/* Trace matrix: from a row's rollup badge, scroll the grid so the requirement's test-case
+   marks come into view, one per click, centred between the sticky columns. View only. */
+function traceJump(el) {
+  const tr = el.closest("tr"), wrap = el.closest(".trace-scroll");
+  if (!tr || !wrap) return;
+  const cells = [...tr.querySelectorAll("td.cell")].filter(td => td.querySelector(".tmark"));
+  if (!cells.length) { Toast.show("No test case verifies this requirement yet."); return; }
+  const i = (Number(el.dataset.i ?? -1) + 1) % cells.length;
+  el.dataset.i = String(i);
+  const cell = cells[i];
+  const reqW = tr.querySelector(".req-col").offsetWidth, statW = tr.querySelector(".stat-col").offsetWidth;
+  const visible = wrap.clientWidth - reqW - statW;
+  wrap.scrollTo({ left: Math.max(0, cell.offsetLeft - reqW - (visible - cell.offsetWidth) / 2), behavior: "smooth" });
+  /* Vertical only: scrollIntoView would also pull the grid back to the row's left edge. */
+  const r = tr.getBoundingClientRect();
+  if (r.top < 0 || r.bottom > innerHeight) window.scrollBy({ top: r.top - (innerHeight - r.height) / 2, behavior: "smooth" });
+  const col = [...tr.children].indexOf(cell) - 1;
+  const head = wrap.querySelectorAll("thead th.tc-col")[col];
+  for (const x of [cell, head]) if (x) { x.classList.remove("jump-flash"); void x.offsetWidth; x.classList.add("jump-flash"); }
+  if (cells.length > 1) Toast.show(`Case ${i + 1} of ${cells.length}${head ? ` — ${head.textContent.trim()}` : ""}`);
+}
+
 Object.assign(Actions, {
+  "trace-jump": (id, el) => traceJump(el),
   /* ---- requirements ---- */
   "add-requirement": (id, el) => {
     const cls = (el && el.dataset && el.dataset.cls) || "System";

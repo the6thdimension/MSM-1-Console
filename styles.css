@@ -1341,6 +1341,12 @@ tr.uncovered .req-col { box-shadow: inset 3px 0 0 var(--red); }
 .tree-cell { display: flex; gap: 6px; align-items: flex-start; padding-left: calc(var(--depth, 0) * 20px); }
 .tree-arrow { color: var(--ink-faint); font-family: var(--mono); margin-right: 6px; }
 .comp-pill.sub { border-style: dashed; }
+/* System cards: top-level components lead; subcomponents follow, smaller and unfilled. */
+.comp-pills { flex-direction: column; align-items: flex-start; gap: 6px; }
+.comp-cluster { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.comp-pills .comp-pill.top { font-size: 11px; font-weight: 600; padding: 3px 10px 3px 8px; border-left-width: 4px; border-radius: 4px 10px 10px 4px; }
+.comp-subs { display: inline-flex; flex-wrap: wrap; gap: 4px; padding-left: 8px; border-left: 1px solid var(--line); }
+.comp-pills .comp-pill.sub { font-size: 9.5px; padding: 1px 7px; background: transparent; opacity: .9; }
 
 /* ---------- requirements register (classes) ---------- */
 .cls-system { --cls: var(--amber); }
@@ -1403,6 +1409,24 @@ tr.uncovered .req-col { box-shadow: inset 3px 0 0 var(--red); }
   background: var(--bg-2);
 }
 .req-table tr.req-group a { color: var(--ink-dim); }
+/* System groups: each system has its own accent (--sysc) on its header and rows. */
+.req-table tr.req-group.sys td { border-top: 2px solid var(--sysc); background: linear-gradient(90deg, var(--bg-3), var(--bg-2) 55%); padding: 10px 16px 8px; }
+.rg-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.rg-dot { width: 10px; height: 10px; border-radius: 3px; background: var(--sysc); box-shadow: 0 0 8px var(--sysc); flex: none; }
+.req-table tr.req-group.sys .rg-head a { color: var(--ink); font-size: 15px; letter-spacing: 1.2px; }
+.req-table tr.req-group.sys .rg-head .code { color: var(--sysc); }
+.rg-bar { display: inline-flex; width: 140px; }
+.rg-bar .meter { display: flex; width: 100%; height: 6px; }
+.req-table tr.req-row td:first-child { box-shadow: inset 3px 0 0 var(--sysc); }
+.req-table tr.req-group.comp td { padding: 6px 16px 5px calc(16px + var(--depth, 0) * 18px); font-family: var(--sans); font-size: 12.5px; letter-spacing: 0; text-transform: none; background: var(--bg-1); box-shadow: inset 3px 0 0 var(--sysc, var(--line)); }
+.req-table tr.req-group.comp a { color: var(--ink); }
+.req-table tr.req-group.comp .code { color: var(--sysc, var(--amber)); }
+.req-also { font-size: 11px; color: var(--ink-faint); margin-top: 4px; }
+.req-also a { font-family: var(--mono); }
+.seg-toggle { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; }
+.seg-toggle a { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .6px; padding: 3px 9px; border: 1px solid var(--line); border-radius: 10px; color: var(--ink-dim); }
+.seg-toggle a.active { color: var(--bg-0); background: var(--amber); border-color: var(--amber); }
+.seg-toggle a:hover { text-decoration: none; border-color: var(--amber-dim); }
 .req-table td { padding-top: 10px; padding-bottom: 10px; }
 .req-main { max-width: 560px; min-width: 240px; }
 @media (max-width: 1000px) { .req-table .col-measure { display: none; } }
@@ -1435,6 +1459,9 @@ td.bad, span.bad { color: var(--red); font-weight: 600; }
 .trace-grid-wrap .panel-head h2 { color: var(--cls, var(--ink-dim)); }
 table.trace .req-parent { display: block; font-family: var(--mono); font-size: 9.5px; color: var(--ink-faint); margin-top: 2px; }
 table.trace td.empty-cols { padding: 0 14px; text-align: left; }
+table.trace .stat-col .badge-btn { cursor: pointer; }
+table.trace .jump-flash { animation: jumpflash 1.8s ease; }
+@keyframes jumpflash { 0%, 35% { background: var(--amber-glow); box-shadow: inset 0 0 0 2px var(--amber); } 100% { background: transparent; box-shadow: none; } }
 table.trace thead th.grp a { display: block; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 1000px) { table.trace .req-col { min-width: 170px; max-width: 220px; } }
 

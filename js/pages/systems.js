@@ -7,10 +7,18 @@ Views.systems = function () {
     const comps = Store.componentsOf(s.id);
     const cases = Store.casesOfSystem(s.id);
     const sysSt = Store.systemStatus(s.id);
-    const pills = Store.componentTree(s.id).map(({ comp: c, depth }) => {
+    // Each top-level component leads a cluster; its subcomponents follow in a smaller,
+    // dashed, unfilled group so the hierarchy reads at a glance.
+    const pill = (c, depth) => {
       const st = Store.componentStatus(c.id);
-      return `<span class="comp-pill st-${COMP_ST_SLUG[st]}${depth ? " sub" : ""}" title="${esc(c.code)} ${esc(c.name)} — ${componentWhy(c.id, false)}${depth ? ` · subcomponent level ${depth}` : ""}">${depth ? "↳ " : ""}${esc(c.name)}</span>`;
-    }).join("");
+      return `<span class="comp-pill ${depth ? "sub" : "top"} st-${COMP_ST_SLUG[st]}" style="--depth:${depth}" title="${esc(c.code)} ${esc(c.name)} — ${componentWhy(c.id, false)}${depth ? ` · subcomponent level ${depth}` : " · top-level component"}">${depth ? `${"·".repeat(depth - 1)}↳ ` : ""}${esc(c.name)}</span>`;
+    };
+    const clusters = [];
+    for (const { comp: c, depth } of Store.componentTree(s.id)) {
+      if (!depth || !clusters.length) clusters.push({ top: pill(c, depth), subs: [] });
+      else clusters[clusters.length - 1].subs.push(pill(c, depth));
+    }
+    const pills = clusters.map(k => `<div class="comp-cluster">${k.top}${k.subs.length ? `<span class="comp-subs">${k.subs.join("")}</span>` : ""}</div>`).join("");
     return `<a class="sys-card" href="#/systems/${s.id}">
       <span class="sys-lamp st-${COMP_ST_SLUG[sysSt]}" title="System status: ${sysSt}"></span>
       <span class="code">${esc(s.code)}</span>

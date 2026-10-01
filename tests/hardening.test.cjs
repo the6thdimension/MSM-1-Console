@@ -316,6 +316,30 @@ test('requirement classes: own code series, flow-down, validation and one trace 
   await S.command('delete',()=>S.remove('requirements',p.id));
   assert.deepEqual(copy(S.get('requirements',w.id).derivedFromIds),['req-1']);h.DataGuard.validate(S.db);
 });
+test('requirements group by system or by traced component; trace rollup badges jump to their marks',async()=>{
+  const h=await ready(),S=h.Store;
+  // system bands appear once a class has two or more owners
+  await S.command('own',()=>{const r=S.all('requirements').find(x=>!x.systemId);const other=S.all('systems').find(s=>s.id!==S.all('requirements').find(x=>x.systemId)?.systemId);if(r&&other)S.update('requirements',r.id,{systemId:other.id});});
+  assert.ok(new Set(S.all('requirements').map(r=>S.ownerOf('requirements',r))).size>=2);
+  const bySys=h.Views.requirements(new URLSearchParams());
+  assert.match(bySys,/req-group sys/);assert.doesNotMatch(bySys,/req-group comp/);
+  assert.match(bySys,/class="req-row" style="--sysc:/,'every row carries its owning system accent');
+  assert.match(bySys,/href="#\/requirements\?by=component"/,'toggle offers the component grouping');
+  const byComp=h.Views.requirements(new URLSearchParams('by=component'));
+  const traced=S.all('requirements').find(r=>(r.componentIds||[]).length);
+  const comp=S.get('components',traced.componentIds[0]);
+  assert.match(byComp,new RegExp(`req-group comp[^>]*>[^]*?#/components/${comp.id}`),'traced component gets its own group');
+  const multi=S.all('requirements').find(r=>(r.componentIds||[]).length>1);
+  if(multi)assert.match(byComp,/req-also/,'a requirement under several components says where else it is traced');
+  // filters keep the grouping; grouping never changes the record set or any record
+  const before=JSON.stringify(S.db.requirements);
+  assert.match(h.Views.requirements(new URLSearchParams('by=component&class=System')),/req-group comp/);
+  assert.equal(JSON.stringify(S.db.requirements),before);
+  let orphan;await S.command('add',()=>{orphan=S.add('requirements',{title:'Untraced synthetic need',text:'',type:'Functional',priority:'Low',method:'Test',measure:'',threshold:'',objective:'',componentIds:[],code:S.nextReqCode('System')});});
+  assert.match(h.Views.requirements(new URLSearchParams('by=component')),/No traced component[^]*Untraced synthetic need/);
+  const tr=h.Views.trace(new URLSearchParams());
+  assert.ok([...tr.matchAll(/data-act="trace-jump"/g)].length>=S.all('requirements').length-1,'each requirement row has a rollup jump control');
+});
 test('CSV interchange keeps requirement class: labels and trace columns out, PSPEC/SWR codes in',async()=>{
   const h=await ready(),S=h.Store;
   await S.command('import',()=>h.IO.importJiraRequirements('Summary,Description\n"PSPEC-077: Synthetic bridge jitter",The bridge shall bound jitter.\n"Plain synthetic requirement",x'));
