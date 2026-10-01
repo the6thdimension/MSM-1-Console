@@ -40,6 +40,28 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
     assert.equal(await page.evaluate(()=>Store.get('cases','tc-1').status),'Complete');
     console.log('PASS execution and consistent status');
 
+    await page.evaluate(()=>App.go('#/systems/sys-3'));
+    await page.locator('#view [data-act="full-regression"]').click();await page.locator('#confirm-yes').click();
+    await page.waitForFunction(()=>location.hash.startsWith('#/testruns/'));
+    const trId=await page.evaluate(()=>location.hash.split('/')[2]);
+    assert.equal(await page.evaluate(id=>Store.get('testRuns',id).caseIds.length,trId),await page.evaluate(()=>Store.regressionScope('sys-3').length));
+    await page.locator('a.filter-pill',{hasText:'Safety Interlock Chain'}).click();await page.waitForFunction(()=>location.hash.endsWith('?comp=cmp-12'));
+    await page.locator('.pill-box.sub a.filter-pill').first().waitFor();
+    const filtered=await page.evaluate(()=>location.hash);
+    await page.evaluate(()=>window.scrollTo(0,400));
+    await page.locator('[data-act="record-run-tr"][data-id="tc-8"]').click();
+    await page.locator('#modal-form select[name="result"]').selectOption('Review for Removal');await page.locator('#modal-form [type="submit"]').click();
+    await page.waitForFunction(id=>Store.testRunResult(id,'tc-8')?.result==='Review for Removal',trId);
+    assert.equal(await page.evaluate(()=>location.hash),filtered,'filter survives recording');
+    assert.equal(await page.evaluate(()=>document.getElementById('trc-tc-8')?.classList.contains('flash')),true,'recorded row restored into view');
+    assert.equal(await page.evaluate(()=>Store.get('cases','tc-8').removalNominated),true);
+    await page.locator('#trc-tc-9 a',{hasText:'Execute'}).click();await page.waitForFunction(()=>location.hash.startsWith('#/execute/tc-9?tr='));
+    await page.locator('#exec-result').selectOption('Waived');await page.locator('[data-act="exec-save"]').click();
+    await page.waitForFunction(f=>location.hash===f,filtered);
+    assert.equal(await page.evaluate(id=>Store.testRunResult(id,'tc-9').result,trId),'Waived');
+    assert.equal(await page.evaluate(()=>Store.get('cases','tc-9').status),'Complete');
+    console.log('PASS full regression, filtered recording, execute round trip, new results');
+
     await page.evaluate(()=>App.go('#/interchange'));
     const beforeCSV=await page.evaluate(()=>Store.db.requirements.length);
     await page.locator('#import-jira-file').setInputFiles({name:'synthetic.csv',mimeType:'text/csv',buffer:Buffer.from('Summary,Priority\nBrowser CSV,High')});
@@ -80,7 +102,7 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
     await tab.close();await page.reload();await page.waitForFunction(()=>!!Store.db&&!Store._tx);
     console.log('PASS real browser competing tabs and five simultaneous-write races');
 
-    for(const route of ['dashboard','schedule','systems','requirements','cases','trace','idsk','procedures','plans','runs','defects','risks','resources','documents','interchange','sitrep','decisions/dec-1/report']) {
+    for(const route of ['dashboard','schedule','systems','requirements','cases','trace','idsk','procedures','plans','runs','defects','risks','resources','documents','interchange','sitrep','decisions/dec-1/report','testruns/tr-1','components/cmp-14']) {
       await page.evaluate(r=>App.go('#/'+r),route);await page.waitForFunction(r=>location.hash==='#/'+r,route);
       assert.doesNotMatch(await page.locator('#view').textContent(),/Something went wrong rendering/);
     }

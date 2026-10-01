@@ -53,8 +53,11 @@ All runtime assets are local. Explicit external links can leave the environment;
 9. Export the complete JSON database regularly and before changing releases.
 
 `/` focuses search; Ctrl/Cmd+K opens navigation and creation commands. The cases
-list supports bulk status/plan actions. Procedure steps support drag reordering.
-Filters live in hash query parameters. Most entity codes are clickable.
+list supports bulk status/plan actions and a removal review queue. Procedure steps
+support drag reordering. Filters live in hash query parameters. Most entity codes
+are clickable. Saving or changing status on the current page re-renders in place:
+the URL (with its filters) and scroll position are kept, and a result recorded from
+a test run brings its row back into view. Navigating to a new page starts at the top.
 
 ## 3. Source map and runtime
 
@@ -70,10 +73,13 @@ Filters live in hash query parameters. Most entity codes are clickable.
 | `js/io.js` | `IO`: CSV parser/writer, Jira and Zephyr conversions, browser file downloads |
 | `js/ui.js` | Escaping, links, badges, page fragments, schema-driven forms, confirmations, toasts, command palette |
 | `js/views.js` | `Views`, `Actions`, field definitions, execution flow, reports, charts, document management |
-| `js/app.js` | `App`: startup, hash routing, HTML replacement, delegated events, file reads, bulk-selection state |
+| `js/regression.js` | Test run sessions page, full-system regression, plan Auto-Fill / Start Run, review-for-removal dispositions |
+| `js/app.js` | `App`: startup, hash routing, HTML replacement, scroll/anchor preservation, delegated events, file reads, bulk-selection state |
 
 Scripts are classic scripts sharing global bindings, not ES modules. Load order:
-seed → guard → fence → store → IO → UI → views → commands → app. `App.boot()` loads/migrates data, attempts a
+seed → guard → fence → store → IO → UI → views → regression → commands → app.
+`regression.js` adds to `Views` and `Actions` before `commands.js` wraps every
+action in the command boundary; it does not override or patch existing functions. `App.boot()` loads/migrates data, attempts a
 daily snapshot, binds events, and renders. `App.render()` routes to a `Views`
 function, assigns its HTML to `#view`, and refreshes navigation counts. Clicks
 with `data-act` dispatch to `Actions`; forms call Store or mutate records directly.
@@ -92,13 +98,14 @@ The tables below describe the application's known fields, not a strict schema.
 |---|---|
 | `meta` | `program`, `version` (seed/blank use 2), `seq` counters, `jiraBaseUrl` |
 | `systems` | `id`, `code`, `name`, `description` |
-| `components` | `id`, `code`, `systemId`, `name`, `description` |
+| `components` | `id`, `code`, `systemId`, optional `parentComponentId` (subcomponent link, any depth, same system), `name`, `description` |
 | `requirements` | `id`, `code`, `title`, `text`, `type`, `priority`, `method`, `measure`, `threshold`, `objective`, `componentIds[]`, `extKey` |
 | `procedures` | `id`, `code`, `title`, `description`, `steps[]` of strings |
 | `criteria` | `id`, `code`, `parentType` (`procedure`/`plan`), `parentId`, `kind` (`entry`/`exit`), `text`, `status`; old records may have `procedureId` |
-| `cases` | `id`, `code`, `componentId`, `title`, `objective`, `requirementIds[]`, `procedureId`, `resourceIds[]`, `priority`, `status`, `venue`, `testType`, `extKey`, `extLinks[]` |
-| `plans` | `id`, `code`, `name`, `description`, `phase`, `status`, `start`, `end`, `caseIds[]`, `decisionId`, `extKey`, `extLinks[]`; old `decision` free text migrates |
-| `runs` | `id`, `code`, `caseId`, optional `planId`, `date`, `operator`, `result`, `measured`, `evidence`, `notes`, `extKey` |
+| `cases` | `id`, `code`, `componentId` and/or `systemId` (blank component = system-level case), `title`, `objective`, `requirementIds[]`, `procedureId`, `resourceIds[]`, `priority`, `status` (adds `Retired`), `venue`, `testType`, `extKey`, `extLinks[]`, `removalNominated`, `reviewDisposition`, `preconditions`, `testData`, `expectedResults`, `passFailCriteria` |
+| `plans` | `id`, `code`, `name`, `description`, `phase`, `status`, `start`, `end`, `caseIds[]`, `decisionId`, `extKey`, `extLinks[]`, optional `regressionSystemId`; old `decision` free text migrates |
+| `runs` | `id`, `code`, `caseId`, optional `planId`, optional `testRunId`, `date`, `operator`, `result` (adds `Waived`, `Review for Removal`), `measured`, `evidence`, `notes`, `extKey` |
+| `testRuns` | `id`, `code`, `name`, `operator`, `status` (free text; app uses Active/Complete/Aborted), `planId`, `systemId`, `componentId` (optional scope root), `caseIds[]` (scope frozen at start), `notes`, `createdAt`, `startedAt`, `completedAt` (date-time text) |
 | `defects` | `id`, `code`, `title`, `description`, `severity`, `status`, `componentId`, `caseIds[]`, `runId`, `owner`, `opened`, `closed` |
 | `risks` | `id`, `code`, `title`, `description`, `category`, `status`, `owner`, likelihood/impact, initial and residual likelihood/impact, `relatedRequirementIds[]`, `relatedCaseIds[]`, nested `mitigations[]` |
 | `resources` | `id`, `code`, `name`, `type`, `description`, `vvaRequired`, `intendedUse`, `owner`, `authority`, `verification`, `validation`, `accreditation`, `accDate`, `accScope`, `artifacts` booleans |
@@ -123,14 +130,15 @@ Compatibility must retain both forms and validate counters against actual record
 | Area / hash | What it provides |
 |---|---|
 | `#/dashboard` | Coverage, verification, results, risks, defects, plan progress, snapshot trends, links to work |
-| `#/systems`, `#/components/:id` | System/component hierarchy and derived component test health |
+| `#/systems`, `#/components/:id` | System/component/subcomponent tree, derived component health, regression scope panel and ▶ Full Regression |
 | `#/requirements` | Requirement register, component trace, verification rollup, measured-value history |
 | `#/cases` | Filterable cases, bulk changes, linked procedure/requirements/resources, runs and defects |
 | `#/trace` | Requirement-by-case matrix grouped by system, coverage and gaps filters |
 | `#/procedures` | Procedure steps and entry/exit criteria, readiness strip, related cases |
 | `#/plans` | Case campaigns, dates, phase criteria, result rollup and pace estimate |
-| `#/runs` | Execution log with result, operator, measurement, evidence, issue key |
-| `#/execute/:id` | Procedure checklist and run capture; Fail offers a defect form |
+| `#/runs` | Test run sessions, then the execution log with result, operator, measurement, evidence, issue key, session |
+| `#/testruns/:id?comp=` | One test run session: completion, per-component groups in tree order, top-level/subcomponent filter pills, vs-previous-run regressions, record/execute per case, complete/reopen/rerun |
+| `#/execute/:id?tr=` | Procedure checklist and run capture; with `tr` it records into that test run and returns to it. Fail offers a defect form |
 | `#/defects` | Severity, ownership, age, status workflow, component/case/run links |
 | `#/risks` | 5×5 matrix, current/initial/residual risk information and mitigation workflow |
 | `#/resources` | Model/simulation/rig/referent register and VV&A tracks, intended use and caveats |
@@ -146,12 +154,35 @@ Compatibility must retain both forms and validate counters against actual record
 - Latest run is selected by descending lexical `date`, across all plans. Same-day
   runs use descending recordedAt and then numeric-aware ID as a deterministic tie-breaker. New runs capture recordedAt; historical timestamps are not invented. Plan counts therefore can use a
   case result recorded under a different plan.
-- Requirement: no linked cases → uncovered; any latest Fail → failing; all latest
-  Pass → verified; otherwise covered. Measurements, open defects, accreditation,
-  and freshness do not independently veto this rollup.
-- Component: a latest Fail or an open Critical/Major defect → Failing; all cases
-  have latest Pass → Passing; any run → In Test; otherwise Untested. System health
-  propagates failures and only reads Passing when every component passes.
+- Requirement: Retired cases are ignored. No linked cases → uncovered; any latest
+  Fail → failing; all latest Pass → verified; otherwise covered. **Waived is not a
+  verified pass**: a waived case keeps its requirement at covered. Measurements,
+  open defects, accreditation, and freshness do not independently veto this rollup.
+- Component: Retired cases are ignored. A latest Fail or an open Critical/Major
+  defect → Failing; every case's latest result is Pass, Waived or Review for
+  Removal → Passing (health, not verification); any run → In Test; otherwise
+  Untested. Subcomponents are separate components; a parent's status covers only
+  its own cases. System health propagates failures and only reads Passing when
+  every component passes.
+- Regression scope for a system: every non-Retired case owned by any of its
+  components (all subcomponent depths) plus its system-level cases. Full
+  Regression reuses the plan whose `regressionSystemId` is that system (else a
+  phase-`Regression` plan whose name contains the system name), creates one
+  otherwise, adds missing scope cases without removing others, and starts a test
+  run with the scope frozen into `caseIds`.
+- Test run results: a case's result in a session is its latest run carrying that
+  `testRunId`. Completion counts Pass, Fail, Waived and Review for Removal as final;
+  Blocked and In Progress are not. "vs Previous" compares with the latest earlier
+  session of the same plan, else of the same system (by `startedAt`/`createdAt`).
+- Review for Removal sets `removalNominated` and a `reviewDisposition` only when a
+  run *newly* takes that result, so editing other run fields never re-raises a
+  nomination the user already resolved. Keep clears it (case → Ready); Retire sets
+  `Retired` and can remove the case from plans. Run changes never alter a Retired
+  case's status. Status cycling skips Retired.
+- Component hierarchy: a parent must exist and cycles are rejected at validation.
+  A parent in another system is displayed as a root rather than rejected. Deleting
+  a component moves its children up to its parent; moving a component to another
+  system moves its whole subtree.
 - Closed and Deferred defects are excluded from the “open” calculation.
 - Decision readiness is the percentage of linked requirements currently verified;
   no linked requirements returns no readiness value. It is not an approval gate.
@@ -160,8 +191,8 @@ Compatibility must retain both forms and validate counters against actual record
 - Risk score is likelihood × impact: 1–4 low, 5–9 moderate, 10–16 high, 17–25
   critical. Residual values are targets; mitigation completion does not calculate
   a new likelihood or impact automatically.
-- New runs map Pass → case Complete; Fail/In Progress → case In Progress;
-  Blocked → case Blocked. Run creation, editing, reassignment and deletion recompute affected case lifecycle states. Deleting the final run sets Draft. Imports retain historical lifecycle fields.
+- New runs map Pass and Waived → case Complete; Fail/In Progress → case In
+  Progress; Blocked → case Blocked; Review for Removal → case Draft. Run creation, editing, reassignment and deletion recompute affected case lifecycle states. Deleting the final run sets Draft. Imports retain historical lifecycle fields.
 - GO/HOLD is an indicator. Execution can still save with open criteria or
   unchecked steps. Unchecked step numbers are appended to notes. Checklist state
   is not a durable, resumable execution record.

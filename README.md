@@ -23,12 +23,15 @@ Future contributors should also read [AGENTS.md](AGENTS.md). The hardening repor
 
 | Area | Model |
 |---|---|
-| Systems → Components | Components are organized under systems; system cards show each component as a status pill (Passing / In Test / Failing / Untested) derived from run results and open defects |
+| Systems → Components → Subcomponents | Components nest under systems and under each other to any depth; system cards show a status lamp and each component as a status pill (Passing / In Test / Failing / Untested). Cases can also attach to a system directly (system-level cases) |
+| Regression | **▶ Full Regression** on a system gathers every active case across its components, subcomponents and system level into its regression plan and opens a test run session. Plans add **Auto-Fill Regression** and **▶ Start Run** |
+| Test Run Sessions | Frozen case scope grouped by component in true tree order, completion % and pass/fail/not-run per group, top-level and subcomponent filter pills colored by in-run status, record or execute per case without losing filter or scroll, **▼ Regressed / ▲ Fixed vs the previous run**, complete/reopen, and one-click rerun of failed and open cases |
+| Removal Review | **Review for Removal** results nominate a case; its page shows the recommendation with **Keep** or **Retire** dispositions. Retired cases leave regression scope and coverage; the cases list has a review queue |
 | Procedures → Test Cases → Test Plans | Procedures own steps + entry/exit criteria and parent their test cases; cases trace to components and requirements and roll into plans; runs record each execution of a case (with measured values and evidence refs) |
 | Defects | Bugs against components with severity, a status workflow (Open → In Analysis → Fix In Work → Ready for Retest → Closed), links to the run that found them; open Critical/Major defects mark their component Failing |
 | Procedures | Step-by-step execution docs with **entry & exit criteria** (Open → Met → Waived) gating a GO/HOLD readiness indicator |
 | Test Plans | Bundle test cases into campaigns with progress rollup from latest run results |
-| Test Runs | Execution log (Pass / Fail / Blocked / In Progress); recording a run auto-updates case status |
+| Test Runs | Execution log (Pass / Fail / Blocked / In Progress / Waived / Review for Removal); recording a run auto-updates case status |
 | Requirements | Traced to components, verified by test cases; rollup: Verified / Failing / Covered / No Coverage |
 | Trace Matrix | Requirements × test cases grid, columns grouped by system (with per-system coverage %); cells colored by latest run result, uncovered requirements flagged; filter by system or gaps-only |
 | Documents | Program document library: link out to files/wikis on your share, or embed small files (≤ 2 MB) directly in the local database; related codes auto-link to any entity |
@@ -63,4 +66,6 @@ Working the tool day to day: **▶ Execute** on a case runs its procedure step-b
 - `js/store.js` — localStorage database + relations + rollups
 - `js/ui.js` — modal forms, toasts, shared fragments
 - `js/views.js` — page renderers + CRUD actions
+- `js/regression.js` — test run sessions, full regression, removal review
+- `js/guard.js`, `js/fence.js`, `js/commands.js` — validation, write fence, command boundary
 - `js/app.js` — hash router + event wiring

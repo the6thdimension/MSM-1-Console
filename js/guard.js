@@ -1,23 +1,24 @@
 /* Pure, offline schema checks. Unknown fields are retained, never projected away. */
 const DataGuard = {
-  collections: ['systems', 'components', 'requirements', 'cases', 'procedures', 'criteria', 'plans', 'runs', 'risks', 'resources', 'decisions', 'events', 'defects', 'documents', 'snapshots', 'audit'],
+  collections: ['systems', 'components', 'requirements', 'cases', 'procedures', 'criteria', 'plans', 'runs', 'risks', 'resources', 'decisions', 'events', 'defects', 'documents', 'testRuns', 'snapshots', 'audit'],
   required: ['systems', 'components', 'requirements', 'cases', 'procedures', 'criteria', 'plans', 'runs', 'risks'],
   arrays: {
     requirements: ['componentIds'], cases: ['requirementIds', 'resourceIds', 'extLinks'],
     procedures: ['steps'], plans: ['caseIds', 'extLinks'], risks: ['relatedRequirementIds', 'relatedCaseIds', 'mitigations'],
-    decisions: ['requirementIds'], events: ['notes'], defects: ['caseIds']
+    decisions: ['requirementIds'], events: ['notes'], defects: ['caseIds'], testRuns: ['caseIds']
   },
   refs: {
-    components: { systemId: 'systems' }, requirements: { componentIds: 'components' },
-    cases: { componentId: 'components', procedureId: 'procedures', requirementIds: 'requirements', resourceIds: 'resources' },
-    plans: { caseIds: 'cases', decisionId: 'decisions' }, runs: { caseId: 'cases', planId: 'plans' },
+    components: { systemId: 'systems', parentComponentId: 'components' }, requirements: { componentIds: 'components' },
+    cases: { componentId: 'components', systemId: 'systems', procedureId: 'procedures', requirementIds: 'requirements', resourceIds: 'resources' },
+    plans: { caseIds: 'cases', decisionId: 'decisions', regressionSystemId: 'systems' }, runs: { caseId: 'cases', planId: 'plans', testRunId: 'testRuns' },
     defects: { componentId: 'components', caseIds: 'cases', runId: 'runs' },
     risks: { relatedRequirementIds: 'requirements', relatedCaseIds: 'cases' },
-    decisions: { requirementIds: 'requirements' }, events: { planId: 'plans', decisionId: 'decisions' }
+    decisions: { requirementIds: 'requirements' }, events: { planId: 'plans', decisionId: 'decisions' },
+    testRuns: { planId: 'plans', systemId: 'systems', componentId: 'components', caseIds: 'cases' }
   },
   enums: {
-    cases: {status: ['Draft','Ready','In Progress','Complete','Blocked']},
-    runs: {result: ['Pass','Fail','Blocked','In Progress']},
+    cases: {status: ['Draft','Ready','In Progress','Complete','Blocked','Retired']},
+    runs: {result: ['Pass','Fail','Blocked','In Progress','Waived','Review for Removal']},
     plans: {status: ['Planning','Active','Complete','On Hold','Closed']},
     criteria: {parentType: ['procedure','plan'], kind: ['entry','exit'], status: ['open','met','waived']},
     defects: {severity: ['Critical','Major','Minor','Cosmetic'], status: ['Open','In Analysis','Fix In Work','Ready for Retest','Closed','Deferred']},
@@ -127,14 +128,15 @@ const DataGuard = {
         codes.add(r.code);
       }
     };
-    const strings = ['code','name','title','description','text','objective','threshold','measure','method','type','priority','status','phase','date','start','end','operator','result','measured','evidence','notes','extKey','venue','testType','owner','authority','intendedUse','accDate','accScope','opened','closed','category','docType','url','fileName','fileType','dataUrl','relatedCodes','added','decision'];
+    const strings = ['code','name','title','description','text','objective','threshold','measure','method','type','priority','status','phase','date','start','end','operator','result','measured','evidence','notes','extKey','venue','testType','owner','authority','intendedUse','accDate','accScope','opened','closed','category','docType','url','fileName','fileType','dataUrl','relatedCodes','added','decision','reviewDisposition','preconditions','testData','expectedResults','passFailCriteria','createdAt','startedAt','completedAt'];
     const known = {
-      systems:'name description', components:'systemId name description',
+      systems:'name description', components:'systemId parentComponentId name description',
       requirements:'title text type priority method measure threshold objective extKey',
       procedures:'title description', criteria:'parentType parentId procedureId kind text status',
-      cases:'componentId title objective procedureId priority status venue testType extKey',
-      plans:'name description phase status start end decisionId decision extKey',
-      runs:'caseId planId date operator result measured evidence notes extKey recordedAt',
+      cases:'componentId systemId title objective procedureId priority status venue testType extKey reviewDisposition preconditions testData expectedResults passFailCriteria',
+      plans:'name description phase status start end decisionId decision extKey regressionSystemId',
+      runs:'caseId planId testRunId date operator result measured evidence notes extKey recordedAt',
+      testRuns:'name operator status notes planId systemId componentId createdAt startedAt completedAt',
       defects:'title description severity status componentId runId owner opened closed',
       risks:'title description category status owner likelihood impact initialLikelihood initialImpact residualLikelihood residualImpact',
       resources:'name type description vvaRequired intendedUse owner authority verification validation accreditation accDate accScope artifacts',
@@ -170,7 +172,21 @@ const DataGuard = {
           for (const id of values) if (id !== '' && id !== null && id !== undefined && (typeof id !== 'string' || !db[target].some(e=>e.id===id))) this.fail(`${path}.${key}`,`missing ${target} reference ${String(id)}`);
         }
         if (coll === 'components' && !r.systemId) this.fail(path,'systemId is required');
-        if (coll === 'cases' && !r.componentId) this.fail(path,'componentId is required');
+        if (coll === 'components' && r.parentComponentId) {
+          // Walk the parent chain; a cycle would make every tree view loop forever.
+          const seen = new Set([r.id]);
+          for (let p = r.parentComponentId; p; ) {
+            if (seen.has(p)) this.fail(`${path}.parentComponentId`,'component hierarchy contains a cycle');
+            seen.add(p);
+            p = (db.components.find(c=>c.id===p) || {}).parentComponentId;
+          }
+        }
+        // System-level cases carry systemId with no owning component.
+        if (coll === 'cases' && !r.componentId && !r.systemId) this.fail(path,'componentId or systemId is required');
+        if (coll === 'cases' && r.removalNominated !== undefined && typeof r.removalNominated !== 'boolean') this.fail(`${path}.removalNominated`,'expected true or false');
+        for (const key of coll==='testRuns'?['createdAt','startedAt','completedAt']:[]) {
+          if (r[key] && !Number.isFinite(Date.parse(r[key]))) this.fail(`${path}.${key}`,'expected a date-time');
+        }
         if (coll === 'runs' && (!r.caseId || !r.date)) this.fail(path,'caseId and date are required');
         if (coll === 'criteria' && !db[r.parentType==='plan'?'plans':'procedures'].some(p=>p.id===r.parentId)) this.fail(path,'missing criterion parent');
         for (const step of coll==='procedures'?r.steps:[]) if (typeof step !== 'string') this.fail(`${path}.steps`,'expected text steps');

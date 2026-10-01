@@ -65,6 +65,20 @@ versions, unsafe identity shapes, malformed types or dangling references are
 reported without changing the source. This does not certify arbitrary private
 schema modifications or undocumented historical releases.
 
+**Regression-enabled independent copy.** A synthetic fixture built from that
+copy's reported schema skeleton (field names and types only; all values invented)
+is checked in `npm test`: `testRuns` records, `parentComponentId`, run
+`testRunId`, case `systemId` with system-level cases (empty `componentId`), the
+`Waived` / `Review for Removal` results, `removalNominated` / `reviewDisposition`,
+and its private fields (`meta.sync*`, `rwsAudit`, `hierarchicalTcImport`, case
+`source*`/`trace*`/`review*` fields and others) all import and re-export
+unchanged. Not verified, because values were not inspected: its `meta.version`
+must be 1 or 2; run results must be one of the six supported values; case statuses
+must be one of the six supported values (including `Retired`); `testRuns.status` is
+accepted as free text; every reference (including `testRuns.caseIds` and
+`parentComponentId`) must resolve, and component cycles are rejected. A file
+outside these rules is refused with the exact record path, unchanged.
+
 Migration retains legacy `procedureId` and free-text `decision` fields. Defaults
 are added only when absent. Existing statuses and measurements are not rewritten
 during import. New runs add `recordedAt`; same-day historical runs without that

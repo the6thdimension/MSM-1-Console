@@ -37,6 +37,7 @@ flowchart TD
   Load --> Storage[(localStorage: active and recovery)]
   Boot --> Router[app.js: hash router and event delegation]
   Router -->|Select view| Views[views.js: Views]
+  Regression[regression.js: test runs and regression flows] -->|Adds Views and Actions at load| Views
   Views -->|Relations and rollups| Store[store.js: Store]
   Views --> UI[ui.js: HTML fragments and badges]
   Views --> DOM[View HTML in DOM]
@@ -64,7 +65,9 @@ mechanism; there is no virtual DOM or backend.
 ```mermaid
 erDiagram
   SYSTEM ||--o{ COMPONENT : contains
-  COMPONENT ||--o{ CASE : owns
+  COMPONENT o|--o{ COMPONENT : parent_of
+  COMPONENT o|--o{ CASE : owns
+  SYSTEM o|--o{ CASE : owns_system_level
   COMPONENT }o--o{ REQUIREMENT : traced_by
   PROCEDURE o|--o{ CASE : supplies_steps
   PROCEDURE ||--o{ CRITERION : has
@@ -74,6 +77,10 @@ erDiagram
   PLAN }o--o{ CASE : includes
   CASE ||--o{ RUN : executed_as
   PLAN o|--o{ RUN : optionally_recorded_under
+  PLAN o|--o{ TEST_RUN : run_as
+  SYSTEM o|--o{ TEST_RUN : regressed_by
+  TEST_RUN }o--o{ CASE : freezes_scope_of
+  TEST_RUN o|--o{ RUN : groups_results
   COMPONENT o|--o{ DEFECT : affected_by
   CASE }o--o{ DEFECT : linked_to
   RUN o|--o{ DEFECT : discovery_run
@@ -88,7 +95,11 @@ erDiagram
 ```
 
 This is the intended logical model; the current store does not enforce all
-cardinalities. Each criterion belongs to a procedure **or** a plan through
+cardinalities. A case belongs to a component (whose system it inherits) or, with
+no component, directly to a system. Components nest through `parentComponentId`;
+cycles are rejected. A test run session stores its frozen case list; each case's
+result in it is an ordinary run carrying `testRunId`, so per-case history and
+every existing rollup keep working unchanged. Each criterion belongs to a procedure **or** a plan through
 `parentType` + `parentId`, not both. Many-to-many links use ID arrays, not join
 tables. Mitigations and event notes are nested records. Documents use free-text
 `relatedCodes`, while evidence references on runs are also text; neither is an

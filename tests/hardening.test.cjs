@@ -16,7 +16,7 @@ function harness(memory=new Map(),fail=()=>false) {
     navigator:{locks:{request:(_key,fn)=>{const pending=queue.then(fn);queue=pending.catch(()=>{});return pending;}}},
     localStorage:{getItem(k){if(fail('get',k))throw Error('read denied');return memory.get(k)??null;},setItem(k,v){if(fail('set',k))throw Error('quota exceeded');memory.set(k,v);writes.push(k);},removeItem(k){memory.delete(k);}}
   });
-  for(const name of ['seed','guard','store','io','ui','views'])vm.runInContext(fs.readFileSync(path.join(root,'js',name+'.js'),'utf8'),ctx,{filename:name});
+  for(const name of ['seed','guard','store','io','ui','views','regression'])vm.runInContext(fs.readFileSync(path.join(root,'js',name+'.js'),'utf8'),ctx,{filename:name});
   const api=vm.runInContext('({Store,DataGuard,IO,Views,safeHttp,externalLink})',ctx);
   return {...api,ctx,memory,writes,load:()=>api.Store.load()};
 }
@@ -158,8 +158,78 @@ test('blank program round trip and restoration preserve original data',async()=>
 test('existing lists, details, reports and execution views render',async()=>{
   const h=await ready();const pages=['dashboard','systems','requirements','cases','trace','procedures','plans','runs','risks','documents','sitrep','defects','idsk','schedule','resources','interchange'];
   for(const p of pages)assert.equal(typeof h.Views[p](new URLSearchParams()),'string');
-  const details={systemDetail:'systems',componentDetail:'components',requirementDetail:'requirements',caseDetail:'cases',procedureDetail:'procedures',planDetail:'plans',riskDetail:'risks',defectDetail:'defects',decisionDetail:'decisions',decisionReport:'decisions',eventDetail:'events',resourceDetail:'resources',execute:'cases'};
+  const details={systemDetail:'systems',componentDetail:'components',requirementDetail:'requirements',caseDetail:'cases',procedureDetail:'procedures',planDetail:'plans',riskDetail:'risks',defectDetail:'defects',decisionDetail:'decisions',decisionReport:'decisions',eventDetail:'events',resourceDetail:'resources',execute:'cases',testRun:'testRuns'};
   for(const [view,coll] of Object.entries(details))for(const e of h.Store.all(coll))assert.equal(typeof h.Views[view](e.id),'string');
+});
+/* Synthetic database shaped like the independent regression-enabled copy: the field
+   names come from its schema skeleton (names/types only); every value here is invented. */
+function forkShaped(){
+  const d=fixture();
+  Object.assign(d.meta,{version:2,syncRevision:7,syncWriter:'synthetic-writer',syncSavedAt:'2026-09-30T12:00:00.000Z',rwsAudit:{entries:[{x:1}]},hierarchicalTcImport:{lastFile:'synthetic.csv',rows:3}});
+  d.components.push({id:'cmp-sub-a',code:'CMP-90',systemId:'sys-2',parentComponentId:'cmp-5',name:'Synthetic sub',description:''},
+                    {id:'cmp-sub-b',code:'CMP-91',systemId:'sys-2',parentComponentId:'cmp-sub-a',name:'Synthetic sub-sub',description:''});
+  d.requirements[0]=Object.assign(d.requirements[0],{sourceType:'jira',sourceRef:'SYN-1',sourceIssueKeys:['SYN-1'],sourceMappings:[{a:1}],sourceLinks:{k:'v'}});
+  for(const tc of d.cases)tc.systemId=d.components.find(c=>c.id===tc.componentId).systemId;
+  Object.assign(d.cases[0],{sourceRelationships:{r:1},sourceRequirementKeys:['SYN-1'],traceEvidence:[{e:1}],allocationBasis:'synthetic',preconditions:'p',testData:'t',expectedResults:'e',passFailCriteria:'c',defectsNotes:'n',baselineRequired:true,legacyTitle:'old',removalNominated:true,coveredByReadyCaseIds:['tc-2'],reviewDisposition:'Review nominated based on latest execution result',reviewOriginalComponentId:'cmp-9',reviewMoveReason:'synthetic move',sourceFile:'synthetic.xlsx'});
+  d.cases.push({id:'tc-syslevel',code:'TC-900',systemId:'sys-3',componentId:'',title:'Synthetic system-level case',objective:'',requirementIds:[],procedureId:null,priority:'High',status:'Ready',venue:'',testType:'',extKey:'',extLinks:[],resourceIds:[]});
+  d.testRuns=[{id:'tr-fork',code:'TR-900',name:'Synthetic regression',operator:'synthetic',startedAt:'2026-09-01T10:00:00.000Z',notes:'',componentId:'',systemId:'sys-3',status:'In Progress',createdAt:'2026-09-01T10:00:00.000Z',completedAt:'',caseIds:['tc-1','tc-syslevel'],planId:'plan-2'}];
+  d.runs.push({id:'run-fork',code:'RUN-900',caseId:'tc-syslevel',testRunId:'tr-fork',planId:'plan-2',date:'2026-09-01',operator:'synthetic',result:'Waived',measured:'',evidence:'',notes:'',extKey:''});
+  return d;
+}
+test('regression-fork shaped database imports with every private field and record preserved',async()=>{
+  const h=await ready(),input=forkShaped();
+  await h.Store.command('import fork',()=>h.Store.importJSON(JSON.stringify(input)));
+  const db=copy(h.Store.db);
+  // seq counters are reconciled upward to the highest existing code (documented); everything else is untouched.
+  for(const k of Object.keys(input.meta).filter(k=>k!=='seq'))assert.deepEqual(db.meta[k],input.meta[k],`meta.${k}`);
+  assert.equal(db.meta.seq.testRuns,900);
+  // Every incoming field survives unchanged (documented absent-only defaults may be added alongside).
+  for(const coll of ['components','requirements','cases','runs','testRuns'])for(const rec of input[coll]){
+    const out=db[coll].find(x=>x.id===rec.id);assert.ok(out,`${coll}.${rec.id} kept`);
+    for(const [k,v] of Object.entries(rec))assert.deepEqual(out[k],v,`${coll}.${rec.id}.${k}`);
+  }
+  assert.equal(h.Store.testRunResult('tr-fork','tc-syslevel').result,'Waived');
+  assert.ok(h.Store.casesOfSystem('sys-3').some(tc=>tc.id==='tc-syslevel'));
+  assert.deepEqual(copy([...h.Store.descendantIds('cmp-5')]),['cmp-5','cmp-sub-a','cmp-sub-b']);
+  for(const html of [h.Views.testRun('tr-fork'),h.Views.testRun('tr-fork',new URLSearchParams('comp=sys:sys-3')),h.Views.caseDetail('tc-1'),h.Views.caseDetail('tc-syslevel'),h.Views.systemDetail('sys-3'),h.Views.componentDetail('cmp-sub-b')])assert.equal(typeof html,'string');
+  assert.match(h.Views.testRun('tr-fork'),/System-level/);assert.match(h.Views.caseDetail('tc-1'),/Review \/ Removal Recommendation/);
+  const once=h.Store.exportJSON();await h.Store.command('reimport',()=>h.Store.importJSON(once));assert.equal(h.Store.exportJSON(),once);
+});
+test('component hierarchy rejects cycles, keeps subtrees on delete, and orders as a tree',async()=>{
+  const h=await ready(),d=forkShaped();
+  const cyc=copy(d);cyc.components.find(c=>c.id==='cmp-5').parentComponentId='cmp-sub-b';
+  await assert.rejects(h.Store.command('cycle',()=>h.Store.importJSON(JSON.stringify(cyc))),/cycle/);
+  const none=copy(d);none.cases.push({...none.cases.at(-1),id:'tc-orphan',code:'TC-901',systemId:'',componentId:''});
+  await assert.rejects(h.Store.command('orphan',()=>h.Store.importJSON(JSON.stringify(none))),/componentId or systemId/);
+  await h.Store.command('import',()=>h.Store.importJSON(JSON.stringify(d)));
+  assert.deepEqual(copy(h.Store.componentTree('sys-2').map(e=>e.comp.id+':'+e.depth).slice(0,3)),['cmp-5:0','cmp-sub-a:1','cmp-sub-b:2']);
+  await h.Store.command('delete middle',()=>h.Store.remove('components','cmp-sub-a'));
+  assert.equal(h.Store.get('components','cmp-sub-b').parentComponentId,'cmp-5');h.DataGuard.validate(h.Store.db);
+});
+test('Waived, Review for Removal and Retired drive case state without overriding dispositions',async()=>{
+  const h=await ready();
+  await h.Store.command('waive',()=>h.Store.add('runs',{caseId:'tc-2',date:'2026-10-01',result:'Waived'}));
+  assert.equal(h.Store.get('cases','tc-2').status,'Complete');assert.notEqual(h.Store.reqStatus('req-9'),'verified');
+  await h.Store.command('nominate',()=>h.Store.add('runs',{caseId:'tc-3',date:'2026-10-01',result:'Review for Removal',notes:'obsolete maneuver'}));
+  let tc=h.Store.get('cases','tc-3');assert.equal(tc.status,'Draft');assert.equal(tc.removalNominated,true);assert.match(tc.reviewDisposition,/obsolete maneuver/);
+  await h.Store.command('keep',()=>h.Store.update('cases','tc-3',{removalNominated:false,reviewDisposition:'Kept'}));
+  const run=h.Store.latestRun('tc-3');await h.Store.command('edit notes',()=>h.Store.update('runs',run.id,{notes:'edited'}));
+  assert.equal(h.Store.get('cases','tc-3').removalNominated,false,'a resolved nomination is not re-raised');
+  await h.Store.command('retire',()=>h.Store.update('cases','tc-14',{status:'Retired'}));
+  await h.Store.command('run on retired',()=>h.Store.add('runs',{caseId:'tc-14',date:'2026-10-02',result:'Pass'}));
+  assert.equal(h.Store.get('cases','tc-14').status,'Retired');
+  assert.ok(!h.Store.regressionScope('sys-2').some(c=>c.id==='tc-14'));
+});
+test('test run sessions keep results as runs, freeze scope and compare with the previous session',async()=>{
+  const h=await ready();
+  const mk=(id,at)=>({name:id,status:'Active',planId:'',systemId:'sys-3',componentId:'',createdAt:at,startedAt:at,completedAt:'',notes:'',operator:'',caseIds:['tc-1','tc-2']});
+  let a,b;await h.Store.command('runs',()=>{a=h.Store.add('testRuns',mk('A','2026-10-01T00:00:00.000Z'));b=h.Store.add('testRuns',mk('B','2026-10-02T00:00:00.000Z'));
+    h.Store.add('runs',{caseId:'tc-2',testRunId:a.id,date:'2026-10-01',result:'Pass'});h.Store.add('runs',{caseId:'tc-2',testRunId:b.id,date:'2026-10-02',result:'Fail'});});
+  assert.equal(h.Store.previousTestRun(h.Store.get('testRuns',b.id)).id,a.id);
+  assert.match(h.Views.testRun(b.id),/Regressed/);
+  await h.Store.command('del case',()=>h.Store.remove('cases','tc-1'));assert.deepEqual(copy(h.Store.get('testRuns',b.id).caseIds),['tc-2']);
+  await h.Store.command('del run',()=>h.Store.remove('testRuns',a.id));
+  const kept=h.Store.all('runs').find(r=>r.caseId==='tc-2'&&r.date==='2026-10-01');assert.ok(kept);assert.equal(kept.testRunId,'');h.DataGuard.validate(h.Store.db);
 });
 test('runtime shell has no remote assets and disallows background connections',()=>{
   const html=fs.readFileSync(path.join(root,'index.html'),'utf8');assert.doesNotMatch(html,/(?:src|href)="https?:/);assert.match(html,/connect-src 'none'/);

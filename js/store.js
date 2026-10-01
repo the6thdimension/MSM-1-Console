@@ -8,10 +8,15 @@ const OLD_DB_KEYS = ["msm4-te-db-v1"];
 const CODE_PREFIX = {
   systems: "SYS", components: "CMP", requirements: "REQ", cases: "TC",
   procedures: "PROC", criteria: "CRI", plans: "TP", runs: "RUN",
-  risks: "RSK", mitigations: "MIT", resources: "RES", decisions: "DP", events: "EVT", notes: "NOTE", defects: "DEF", documents: "DOC"
+  risks: "RSK", mitigations: "MIT", resources: "RES", decisions: "DP", events: "EVT", notes: "NOTE", defects: "DEF", documents: "DOC", testRuns: "TR"
 };
 
-const CODE_PAD = { systems: 2, components: 2, procedures: 2, plans: 2, resources: 2, decisions: 2, events: 2, requirements: 3, cases: 3, runs: 3, risks: 3, criteria: 3, mitigations: 3, notes: 3, defects: 3, documents: 2 };
+const CODE_PAD = { systems: 2, components: 2, procedures: 2, plans: 2, resources: 2, decisions: 2, events: 2, requirements: 3, cases: 3, runs: 3, risks: 3, criteria: 3, mitigations: 3, notes: 3, defects: 3, documents: 2, testRuns: 3 };
+
+/* Case lifecycle implied by a case's latest run result. */
+const RUN_CASE_STATUS = { Pass: 'Complete', Fail: 'In Progress', 'In Progress': 'In Progress', Blocked: 'Blocked', Waived: 'Complete', 'Review for Removal': 'Draft' };
+/* Results that close out a case inside a test run (Blocked / In Progress do not). */
+const RUN_DONE_RESULTS = ['Pass', 'Fail', 'Waived', 'Review for Removal'];
 
 const Store = {
   db: null,
@@ -142,15 +147,24 @@ const Store = {
   reconcileRuns(before) {
     const old=new Map(before.runs.map(r=>[r.id,r]));
     const now=new Map(this.db.runs.map(r=>[r.id,r]));
-    const affected=new Set();
+    const affected=new Set(), nominate=new Set();
     for(const id of new Set([...old.keys(),...now.keys()])) {
       const a=old.get(id), b=now.get(id);
       if(JSON.stringify(a)!==JSON.stringify(b)) { if(a)affected.add(a.caseId); if(b)affected.add(b.caseId); }
+      // Nominate only when a run newly becomes Review for Removal, so a later
+      // unrelated edit cannot re-raise a nomination the user already resolved.
+      if(b && b.result==='Review for Removal' && (!a || a.result!==b.result)) nominate.add(b.caseId);
     }
     for(const id of affected) {
       const tc=this.get('cases',id); if(!tc)continue;
+      // Retirement is a deliberate disposition; run edits never silently undo it.
+      if(tc.status==='Retired')continue;
       const run=this.latestRun(id);
-      tc.status=run?({Pass:'Complete',Fail:'In Progress','In Progress':'In Progress',Blocked:'Blocked'}[run.result]):'Draft';
+      tc.status=run?RUN_CASE_STATUS[run.result]:'Draft';
+      if(nominate.has(id) && run && run.result==='Review for Removal' && !tc.removalNominated) {
+        tc.removalNominated=true;
+        tc.reviewDisposition=`Nominated for review/removal by ${run.code} on ${run.date}${run.notes?` — ${run.notes}`:''}`;
+      }
     }
   },
 
@@ -220,7 +234,7 @@ const Store = {
       meta: { program: programName || "New T&E Program", version: 2, jiraBaseUrl: keepJira, seq: {} },
       systems: [], components: [], requirements: [], cases: [], procedures: [], criteria: [],
       plans: [], runs: [], risks: [], resources: [], decisions: [], events: [], defects: [],
-      documents: [], snapshots: [], audit: []
+      documents: [], testRuns: [], snapshots: [], audit: []
     };
     this.migrate();
   },
@@ -234,7 +248,7 @@ const Store = {
   get(coll, id) { return (this.db[coll] || []).find(x => x.id === id) || null; },
 
   byCode(code) {
-    for (const coll of ["systems", "components", "requirements", "cases", "procedures", "plans", "runs", "risks", "resources", "decisions", "events", "defects", "documents"]) {
+    for (const coll of ["systems", "components", "requirements", "cases", "procedures", "plans", "runs", "risks", "resources", "decisions", "events", "defects", "documents", "testRuns"]) {
       const hit = this.all(coll).find(x => x.code === code);
       if (hit) return { coll, entity: hit };
     }
@@ -292,22 +306,32 @@ const Store = {
     const item = this.get(coll, id);
     if (item) this.logAudit(coll, item, "deleted");
     this.db[coll] = this.db[coll].filter(x => x.id !== id);
-    this.cleanupRefs(coll, id);
+    this.cleanupRefs(coll, id, item);
     this.save();
   },
 
-  /* Remove dangling references after a delete. */
-  cleanupRefs(coll, id) {
+  /* Remove dangling references after a delete. `removed` is the deleted record. */
+  cleanupRefs(coll, id, removed) {
     const db = this.db;
     if (coll === "systems") {
-      db.components.filter(c => c.systemId === id).forEach(c => this.cleanupRefs("components", c.id));
+      db.components.filter(c => c.systemId === id).forEach(c => this.cleanupRefs("components", c.id, c));
       db.components = db.components.filter(c => c.systemId !== id);
+      // System-level cases go with their system; a stray systemId on a case owned
+      // by another system's component is cleared instead.
+      db.cases.filter(tc => tc.systemId === id && !tc.componentId).forEach(tc => this.cleanupRefs("cases", tc.id, tc));
+      db.cases = db.cases.filter(tc => !(tc.systemId === id && !tc.componentId));
+      db.cases.forEach(tc => { if (tc.systemId === id) tc.systemId = ""; });
+      db.plans.forEach(p => { if (p.regressionSystemId === id) p.regressionSystemId = ""; });
+      (db.testRuns || []).forEach(t => { if (t.systemId === id) t.systemId = ""; });
     }
     if (coll === "components") {
-      db.cases.filter(tc => tc.componentId === id).forEach(tc => this.cleanupRefs("cases", tc.id));
+      db.cases.filter(tc => tc.componentId === id).forEach(tc => this.cleanupRefs("cases", tc.id, tc));
       db.cases = db.cases.filter(tc => tc.componentId !== id);
       db.requirements.forEach(r => r.componentIds = (r.componentIds || []).filter(x => x !== id));
       (db.defects || []).forEach(d => { if (d.componentId === id) d.componentId = ""; });
+      // Subcomponents move up one level rather than being deleted with their parent.
+      db.components.forEach(c => { if (c.parentComponentId === id) c.parentComponentId = (removed && removed.parentComponentId) || ""; });
+      (db.testRuns || []).forEach(t => { if (t.componentId === id) t.componentId = ""; });
     }
     if (coll === "cases") {
       db.plans.forEach(p => p.caseIds = (p.caseIds || []).filter(x => x !== id));
@@ -315,6 +339,11 @@ const Store = {
       db.runs = db.runs.filter(r => r.caseId !== id);
       db.risks.forEach(r => r.relatedCaseIds = (r.relatedCaseIds || []).filter(x => x !== id));
       (db.defects || []).forEach(d => d.caseIds = (d.caseIds || []).filter(x => x !== id));
+      (db.testRuns || []).forEach(t => t.caseIds = (t.caseIds || []).filter(x => x !== id));
+    }
+    if (coll === "testRuns") {
+      // Results recorded during a test run are real execution history; keep them.
+      db.runs.forEach(r => { if (r.testRunId === id) r.testRunId = ""; });
     }
     if (coll === "runs") {
       (db.defects || []).forEach(d => { if (d.runId === id) d.runId = ""; });
@@ -336,6 +365,7 @@ const Store = {
       db.criteria = db.criteria.filter(c => !(c.parentType === "plan" && c.parentId === id));
       db.runs.forEach(r => { if (r.planId === id) r.planId = null; });
       (db.events || []).forEach(ev => { if (ev.planId === id) ev.planId = ""; });
+      (db.testRuns || []).forEach(t => { if (t.planId === id) t.planId = ""; });
     }
     if (coll === "resources") {
       db.cases.forEach(tc => tc.resourceIds = (tc.resourceIds || []).filter(x => x !== id));
@@ -345,9 +375,70 @@ const Store = {
   /* -------- relation helpers -------- */
   componentsOf(systemId) { return this.all("components").filter(c => c.systemId === systemId); },
   casesOf(componentId) { return this.all("cases").filter(tc => tc.componentId === componentId); },
+  /* Includes system-level cases (systemId set, no owning component). */
   casesOfSystem(systemId) {
     const ids = new Set(this.componentsOf(systemId).map(c => c.id));
-    return this.all("cases").filter(tc => ids.has(tc.componentId));
+    return this.all("cases").filter(tc => ids.has(tc.componentId) || (!tc.componentId && tc.systemId === systemId));
+  },
+  systemLevelCases(systemId) { return this.all("cases").filter(tc => !tc.componentId && tc.systemId === systemId); },
+  /* A case's system: its component's system wins over a denormalized systemId. */
+  caseSystemId(tc) {
+    const comp = tc.componentId ? this.get("components", tc.componentId) : null;
+    return comp ? comp.systemId : (tc.systemId || "");
+  },
+
+  /* ---------- component hierarchy (parentComponentId) ---------- */
+  byCodeOrder(a, b) { return String(a.code || a.id).localeCompare(String(b.code || b.id), "en", { numeric: true }); },
+  /* A component whose parent is missing or lives in another system is treated as a root. */
+  parentOf(comp) {
+    const p = comp && comp.parentComponentId ? this.get("components", comp.parentComponentId) : null;
+    return p && p.systemId === comp.systemId ? p : null;
+  },
+  childrenOf(compId) {
+    const c = this.get("components", compId);
+    return this.all("components").filter(x => x.parentComponentId === compId && c && x.systemId === c.systemId).sort(this.byCodeOrder);
+  },
+  ancestorIds(compId) {
+    const out = [];
+    for (let c = this.parentOf(this.get("components", compId)); c && !out.includes(c.id); c = this.parentOf(c)) out.unshift(c.id);
+    return out;
+  },
+  componentDepth(compId) { return this.ancestorIds(compId).length; },
+  descendantIds(compId) {
+    const out = new Set([compId]);
+    for (const id of out) for (const ch of this.childrenOf(id)) out.add(ch.id);
+    return out;
+  },
+  /* Depth-first: each root, then its children recursively. */
+  componentTree(systemId) {
+    const out = [], visit = (c, depth) => { out.push({ comp: c, depth }); for (const ch of this.childrenOf(c.id)) visit(ch, depth + 1); };
+    this.componentsOf(systemId).filter(c => !this.parentOf(c)).sort(this.byCodeOrder).forEach(c => visit(c, 0));
+    return out;
+  },
+
+  /* ---------- regression scope & test runs ---------- */
+  /* Every non-retired case in the system, across components, subcomponents and system level. */
+  regressionScope(systemId) { return this.casesOfSystem(systemId).filter(tc => tc.status !== "Retired"); },
+  regressionPlanFor(systemId) {
+    const sys = this.get("systems", systemId);
+    return this.all("plans").find(p => p.regressionSystemId === systemId) ||
+      (sys && this.all("plans").find(p => p.phase === "Regression" && !p.regressionSystemId && String(p.name || "").includes(sys.name))) || null;
+  },
+  testRunTime(t) { return Date.parse(t.startedAt || t.createdAt || "") || 0; },
+  testRunsSorted(filter) {
+    return this.all("testRuns").filter(filter || (() => true)).sort((a, b) => this.testRunTime(b) - this.testRunTime(a) || this.byCodeOrder(b, a));
+  },
+  testRunIsOpen(t) { return !/^(complete|completed|closed|aborted|cancelled)$/i.test(t.status || ""); },
+  /* The case's result inside one test run: its latest run carrying that testRunId. */
+  testRunResult(testRunId, caseId) {
+    return this.runsOf(caseId).find(r => r.testRunId === testRunId) || null;
+  },
+  /* The earlier test run to compare against: latest earlier run of the same plan,
+     otherwise the latest earlier run of the same system. */
+  previousTestRun(t) {
+    const mine = this.testRunTime(t);
+    const earlier = key => this.testRunsSorted(x => x.id !== t.id && key(x) && this.testRunTime(x) < mine)[0] || null;
+    return (t.planId && earlier(x => x.planId === t.planId)) || (t.systemId && earlier(x => x.systemId === t.systemId)) || null;
   },
   criteriaOf(parentId, kind) {
     return this.all("criteria").filter(c => c.parentId === parentId && (!kind || c.kind === kind));
@@ -380,11 +471,12 @@ const Store = {
   componentStatus(compId) {
     const openBad = this.defectsOfComponent(compId).some(d =>
       this.defectIsOpen(d) && (d.severity === "Critical" || d.severity === "Major"));
-    const cases = this.casesOf(compId);
+    const cases = this.casesOf(compId).filter(tc => tc.status !== "Retired");
     const runs = cases.map(tc => this.latestRun(tc.id));
     const anyFail = runs.some(r => r && r.result === "Fail");
     if (anyFail || openBad) return "Failing";
-    if (cases.length && runs.every(r => r && r.result === "Pass")) return "Passing";
+    // Health, not verification: waived and removal-nominated cases are settled outcomes.
+    if (cases.length && runs.every(r => r && ["Pass", "Waived", "Review for Removal"].includes(r.result))) return "Passing";
     if (runs.some(r => r)) return "In Test";
     return "Untested";
   },
@@ -423,7 +515,8 @@ const Store = {
 
   /* Requirement verification rollup: "verified" | "failing" | "covered" | "uncovered" */
   reqStatus(reqId) {
-    const cases = this.casesOfRequirement(reqId);
+    // Retired cases no longer provide coverage. Waived is not a verified pass.
+    const cases = this.casesOfRequirement(reqId).filter(tc => tc.status !== "Retired");
     if (!cases.length) return "uncovered";
     let anyFail = false, allPass = true;
     for (const tc of cases) {
@@ -461,8 +554,9 @@ const Store = {
   deletionImpact(coll, id) {
     const previous = this.db;
     this.db = DataGuard.clone(previous);
+    const removed = this.db[coll].find(e=>e.id===id);
     this.db[coll] = this.db[coll].filter(e=>e.id!==id);
-    this.cleanupRefs(coll,id);
+    this.cleanupRefs(coll,id,removed);
     const lines = [];
     for (const name of DataGuard.collections.filter(c=>!['audit','snapshots'].includes(c))) {
       const removed = previous[name].filter(e=>!this.db[name].some(n=>n.id===e.id));
@@ -497,6 +591,7 @@ const Store = {
     scan("events", "Schedule Event", ["code", "title", "description", "location"], e => `#/events/${e.id}`);
     scan("defects", "Defect", ["code", "title", "description"], e => `#/defects/${e.id}`);
     scan("documents", "Document", ["code", "title", "description", "url", "fileName", "relatedCodes"], e => `#/documents`);
+    scan("testRuns", "Test Run Session", ["code", "name", "notes", "operator"], e => `#/testruns/${e.id}`);
     return hits.slice(0, 40);
   }
 };

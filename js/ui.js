@@ -30,6 +30,7 @@ const ROUTE_OF = {
   events: id => `#/events/${id}`,
   defects: id => `#/defects/${id}`,
   documents: () => "#/documents",
+  testRuns: id => `#/testruns/${id}`,
   runs: () => "#/runs"
 };
 
@@ -55,7 +56,8 @@ const BADGE_COLOR = {
   "Draft": "b-grey", "Ready": "b-blue", "In Progress": "b-amber", "Complete": "b-green", "Blocked": "b-orange",
   "Planning": "b-grey", "Active": "b-amber", "Closed": "b-grey", "On Hold": "b-orange",
   // run results
-  "Pass": "b-green", "Fail": "b-red",
+  "Pass": "b-green", "Fail": "b-red", "Waived": "b-amber", "Review for Removal": "b-purple",
+  "Retired": "b-grey", "Aborted": "b-grey",
   // requirement rollup
   "verified": "b-green", "failing": "b-red", "covered": "b-blue", "uncovered": "b-grey",
   // priorities
@@ -93,9 +95,11 @@ function badge(text, cls) {
   return `<span class="badge ${c}">${esc(label)}</span>`;
 }
 
+const RUN_DOT = { "Pass": "pass", "Fail": "fail", "Blocked": "blocked", "In Progress": "inprogress", "Waived": "waived", "Review for Removal": "removal" };
+
 function runBadge(run) {
   if (!run) return `<span class="faint small">Not run</span>`;
-  const dot = { "Pass": "pass", "Fail": "fail", "Blocked": "blocked", "In Progress": "inprogress" }[run.result] || "blocked";
+  const dot = RUN_DOT[run.result] || "blocked";
   return `<span class="run-dot ${dot}"></span>${badge(run.result)} <span class="faint mono">${esc(run.date || "")}</span>`;
 }
 
@@ -219,7 +223,7 @@ const Modal = {
     if (first) first.focus();
   },
 
-  confirm(message, onYes, label = "Delete") {
+  confirm(message, onYes, label = "Delete", safe = false) {
     const root = document.getElementById("modal-root");
     root.innerHTML = `
       <div class="modal-scrim" data-scrim>
@@ -228,7 +232,7 @@ const Modal = {
           <div class="modal-body"><p style="margin:4px 0 0">${esc(message)}</p></div>
           <div class="modal-foot">
             <button type="button" class="btn btn-ghost" data-close>Cancel</button>
-            <button type="button" class="btn" id="confirm-yes" style="background:var(--red);color:#fff">${esc(label)}</button>
+            <button type="button" class="btn" id="confirm-yes"${safe ? "" : ` style="background:var(--red);color:#fff"`}>${esc(label)}</button>
           </div>
         </div>
       </div>`;
@@ -381,9 +385,10 @@ function actBtn(label, act, id, extra, ghost = true, cls = "btn-sm") {
 }
 
 function progressMeter(counts) {
-  // counts: {pass, fail, blocked, open} — proportional segments
-  const total = counts.pass + counts.fail + counts.blocked + counts.open;
+  // counts: {pass, fail, blocked, open, waived?, removal?} — proportional segments
+  const waived = counts.waived || 0, removal = counts.removal || 0;
+  const total = counts.pass + counts.fail + counts.blocked + counts.open + waived + removal;
   if (!total) return `<div class="meter"><span class="m-open" style="width:100%"></span></div>`;
   const seg = (n, cls) => n ? `<span class="${cls}" style="width:${(n / total * 100).toFixed(1)}%"></span>` : "";
-  return `<div class="meter">${seg(counts.pass, "m-pass")}${seg(counts.fail, "m-fail")}${seg(counts.blocked, "m-blocked")}${seg(counts.open, "m-open")}</div>`;
+  return `<div class="meter">${seg(counts.pass, "m-pass")}${seg(waived, "m-waived")}${seg(removal, "m-removal")}${seg(counts.fail, "m-fail")}${seg(counts.blocked, "m-blocked")}${seg(counts.open, "m-open")}</div>`;
 }

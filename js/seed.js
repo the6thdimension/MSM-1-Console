@@ -10,7 +10,7 @@ const SEED_DB = {
   meta: {
     program: "MSM-1 Virtual Proving Ground",
     version: 2,
-    seq: { systems: 3, components: 12, requirements: 12, cases: 14, procedures: 5, criteria: 31, plans: 2, runs: 9, risks: 7, mitigations: 13, resources: 5, decisions: 3, events: 9, notes: 5, defects: 4, documents: 3 }
+    seq: { systems: 3, components: 15, requirements: 12, cases: 15, procedures: 5, criteria: 31, plans: 2, runs: 9, risks: 7, mitigations: 13, resources: 5, decisions: 3, events: 9, notes: 5, defects: 4, documents: 3, testRuns: 1 }
   },
 
   systems: [
@@ -31,7 +31,11 @@ const SEED_DB = {
     { id: "cmp-9",  code: "CMP-09", systemId: "sys-3", name: "Truck Hardware Interface",   description: "CAN/J1939 bridge between the real truck hardware rig and the simulation's virtual bus." },
     { id: "cmp-10", code: "CMP-10", systemId: "sys-3", name: "Time Sync & Latency Mgr",    description: "Clock distribution, timestep scheduling, and latency budget management across sim and hardware." },
     { id: "cmp-11", code: "CMP-11", systemId: "sys-3", name: "Operator Station & HMI",     description: "Replicated cab controls and crew displays driving the simulation as the real truck would." },
-    { id: "cmp-12", code: "CMP-12", systemId: "sys-3", name: "Safety Interlock Chain",     description: "Hardware e-stops and interlocks that safe both the hardware rig and the simulation outputs." }
+    { id: "cmp-12", code: "CMP-12", systemId: "sys-3", name: "Safety Interlock Chain",     description: "Hardware e-stops and interlocks that safe both the hardware rig and the simulation outputs." },
+    /* Subcomponents (parentComponentId) — two levels deep under the dynamics model. */
+    { id: "cmp-13", code: "CMP-13", systemId: "sys-2", parentComponentId: "cmp-5",  name: "Tire & Terrain Contact",   description: "Tire force generation and terrain contact sub-model inside the vehicle dynamics model." },
+    { id: "cmp-14", code: "CMP-14", systemId: "sys-2", parentComponentId: "cmp-13", name: "Lug Stiffness Tables",     description: "Frequency-dependent tire lug stiffness/damping lookup tables (suspected root of DEF-001)." },
+    { id: "cmp-15", code: "CMP-15", systemId: "sys-3", parentComponentId: "cmp-12", name: "E-Stop Network",           description: "The three hardware e-stop stations and their signal path into the rig and simulation." }
   ],
 
   /* measure: None | KPP | KSA | CTP | TPM | MOP | MOE | Spec */
@@ -192,13 +196,15 @@ const SEED_DB = {
     { id: "tc-5",  code: "TC-005", componentId: "cmp-8",  title: "Thermal model vs hardware test data", objective: "Validate coolant temperature predictions against instrumented hardware engagement-cycle data within ±2 °C.", requirementIds: ["req-6"], procedureId: "proc-2", priority: "Critical", status: "In Progress", venue: "Virtual", testType: "V&V – Validation", resourceIds: ["res-4"] },
     { id: "tc-6",  code: "TC-006", componentId: "cmp-4",  title: "Frame rate at full scene density", objective: "Measure sustained FPS on the reference hardware configuration with maximum scenario density.", requirementIds: ["req-3"], procedureId: "proc-3", priority: "High", status: "Complete", venue: "Virtual", testType: "DT&E", resourceIds: ["res-2"] },
     { id: "tc-7",  code: "TC-007", componentId: "cmp-3",  title: "Deterministic replay verification", objective: "Record a 30-minute scenario and verify bit-exact physics state on replay.", requirementIds: ["req-7"], procedureId: "proc-3", priority: "High", status: "Complete", venue: "Virtual", testType: "V&V – Verification", resourceIds: ["res-2"] },
-    { id: "tc-8",  code: "TC-008", componentId: "cmp-12", title: "E-stop propagation timing", objective: "Measure e-stop to hardware-halt and sim-freeze latency for all stations; verify ≤ 100 ms.", requirementIds: ["req-10"], procedureId: "proc-4", priority: "Critical", status: "Complete", venue: "HWIL", testType: "DT&E", resourceIds: ["res-3", "res-5"] },
+    { id: "tc-8",  code: "TC-008", componentId: "cmp-15", title: "E-stop propagation timing", objective: "Measure e-stop to hardware-halt and sim-freeze latency for all stations; verify ≤ 100 ms.", requirementIds: ["req-10"], procedureId: "proc-4", priority: "Critical", status: "Complete", venue: "HWIL", testType: "DT&E", resourceIds: ["res-3", "res-5"] },
     { id: "tc-9",  code: "TC-009", componentId: "cmp-12", title: "Interlock inhibit verification", objective: "Open each interlock individually; verify inhibit of both hardware outputs and scenario start.", requirementIds: ["req-10"], procedureId: "proc-4", priority: "Critical", status: "Complete", venue: "HWIL", testType: "DT&E", resourceIds: ["res-3"] },
     { id: "tc-10", code: "TC-010", componentId: "cmp-9",  title: "J1939 message set coverage audit", objective: "Audit emulated bus traffic against the reference truck's operational message catalog; verify 100% coverage.", requirementIds: ["req-4"], procedureId: null, priority: "High", status: "Ready", venue: "HWIL", testType: "Integration", resourceIds: ["res-3"] },
     { id: "tc-11", code: "TC-011", componentId: "cmp-2",  title: "Terrain correlation survey check", objective: "Compare simulated course geometry against survey control points; verify ≤ 10 cm RMS.", requirementIds: ["req-11"], procedureId: null, priority: "Medium", status: "Ready", venue: "Constructive", testType: "V&V – Validation", resourceIds: ["res-2"] },
     { id: "tc-12", code: "TC-012", componentId: "cmp-11", title: "Cab control mapping audit", objective: "Exercise every cab control on the operator station; verify correct mapping, range, and bus behavior vs the real cab.", requirementIds: ["req-12"], procedureId: "proc-5", priority: "High", status: "Ready", venue: "HWIL", testType: "DT&E", resourceIds: ["res-3"] },
     { id: "tc-13", code: "TC-013", componentId: "cmp-3",  title: "Fault injection class demonstration", objective: "Inject each defined fault class on command; verify correct system response and event logging.", requirementIds: ["req-8"], procedureId: null, priority: "Medium", status: "Draft", venue: "Virtual", testType: "DT&E", resourceIds: ["res-2"] },
-    { id: "tc-14", code: "TC-014", componentId: "cmp-5",  title: "SME face validation — ride & handling", objective: "Structured SME driving sessions rating behavioral fidelity vs the real truck (validation evidence for accreditation).", requirementIds: ["req-2", "req-12"], procedureId: "proc-5", priority: "High", status: "Draft", venue: "HWIL", testType: "V&V – Validation", resourceIds: ["res-2", "res-3", "res-1"] }
+    { id: "tc-14", code: "TC-014", componentId: "cmp-5",  title: "SME face validation — ride & handling", objective: "Structured SME driving sessions rating behavioral fidelity vs the real truck (validation evidence for accreditation).", requirementIds: ["req-2", "req-12"], procedureId: "proc-5", priority: "High", status: "Draft", venue: "HWIL", testType: "V&V – Validation", resourceIds: ["res-2", "res-3", "res-1"] },
+    { id: "tc-15", code: "TC-015", componentId: "cmp-14", title: "Lug stiffness sweep vs washboard referent", objective: "Sweep lug stiffness table inputs from 5–60 Hz and compare suspension travel against the washboard referent segment; isolates DEF-001.", requirementIds: ["req-2"], procedureId: "proc-2", priority: "High", status: "Ready", venue: "Virtual", testType: "V&V – Validation", resourceIds: ["res-1", "res-4"],
+      preconditions: "Referent washboard segment (RES-04) baselined; lug stiffness table under CM.", expectedResults: "Suspension travel RMS error ≤ 5% across the sweep.", passFailCriteria: "Pass if every sweep point is within 5% RMS of referent." }
   ],
 
   /* Program decisions — the rows of the IDSK. requirementIds are the
@@ -273,10 +279,10 @@ const SEED_DB = {
     { id: "run-1", code: "RUN-001", caseId: "tc-4",  planId: "plan-1", date: "2026-08-14", operator: "M. Reyes",   result: "Pass", measured: "1.8% torque dev / 2.4% fuel dev", evidence: "VV-PT-01.pdf\ndyno-cmp-0814.csv", notes: "Torque curve within 1.8%, fuel burn within 2.4% of dyno referent. Report VV-PT-01 archived." },
     { id: "run-2", code: "RUN-002", caseId: "tc-7",  planId: "plan-1", date: "2026-08-19", operator: "A. Chen",    result: "Pass", notes: "Bit-exact replay over 30 min confirmed on two configurations. Hash logs archived." },
     { id: "run-3", code: "RUN-003", caseId: "tc-6",  planId: "plan-2", date: "2026-08-21", operator: "A. Chen",    result: "Pass", measured: "71 FPS sustained (64 FPS transient min)", evidence: "perf-0821.json", notes: "Sustained 71 FPS at max density; transient dips to 64 FPS during fault bursts — within spec." },
-    { id: "run-4", code: "RUN-004", caseId: "tc-8",  planId: "plan-2", date: "2026-08-27", operator: "J. Novak",   result: "Pass", measured: "41 ms worst path", evidence: "estop-timing-0827.csv", notes: "Worst path 41 ms (station 2 → sim freeze). All stations well under 100 ms." },
-    { id: "run-5", code: "RUN-005", caseId: "tc-9",  planId: "plan-2", date: "2026-08-27", operator: "J. Novak",   result: "Pass", notes: "All interlocks inhibit correctly; comms-watchdog annunciation delayed ~1 s (cosmetic, OBS-007)." },
+    { id: "run-4", code: "RUN-004", caseId: "tc-8",  planId: "plan-2", testRunId: "tr-1", date: "2026-08-27", operator: "J. Novak",   result: "Pass", measured: "41 ms worst path", evidence: "estop-timing-0827.csv", notes: "Worst path 41 ms (station 2 → sim freeze). All stations well under 100 ms." },
+    { id: "run-5", code: "RUN-005", caseId: "tc-9",  planId: "plan-2", testRunId: "tr-1", date: "2026-08-27", operator: "J. Novak",   result: "Pass", notes: "All interlocks inhibit correctly; comms-watchdog annunciation delayed ~1 s (cosmetic, OBS-007)." },
     { id: "run-6", code: "RUN-006", caseId: "tc-3",  planId: "plan-1", date: "2026-09-01", operator: "M. Reyes",   result: "Fail", measured: "7.2% RMS (washboard, susp travel)", evidence: "vvcmp-0901/\nDEF-001", notes: "Washboard maneuver RMS error 7.2% (suspension travel channel). On-road maneuvers all ≤ 3.1%. See RSK-001 — tire model off-road regime." },
-    { id: "run-7", code: "RUN-007", caseId: "tc-1",  planId: "plan-2", date: "2026-09-04", operator: "J. Novak",   result: "Fail", measured: "26 ms P99 (transient load)", evidence: "lat-0904.parquet\nDEF-002", notes: "P99 latency 26 ms under transient load (render thread contention). Idle/full-scene within spec. See RSK-002." },
+    { id: "run-7", code: "RUN-007", caseId: "tc-1",  planId: "plan-2", testRunId: "tr-1", date: "2026-09-04", operator: "J. Novak",   result: "Fail", measured: "26 ms P99 (transient load)", evidence: "lat-0904.parquet\nDEF-002", notes: "P99 latency 26 ms under transient load (render thread contention). Idle/full-scene within spec. See RSK-002." },
     { id: "run-8", code: "RUN-008", caseId: "tc-5",  planId: "plan-1", date: "2026-09-08", operator: "M. Reyes",   result: "In Progress", measured: "+1.7 °C worst dev (6/10 segments)", evidence: "", notes: "6 of 10 duty-cycle segments compared; worst deviation so far +1.7 °C on return line." },
     { id: "run-9", code: "RUN-009", caseId: "tc-6",  planId: "plan-2", date: "2026-09-06", operator: "A. Chen",    result: "Pass", measured: "74 FPS sustained", evidence: "perf-0906.json", notes: "Re-run after shader batching optimization; sustained rate up from 71 to 74 FPS at max density." }
   ],
@@ -299,6 +305,14 @@ const SEED_DB = {
 
   /* Bugs / defects. severity: Critical | Major | Minor | Cosmetic.
      status: Open | In Analysis | Fix In Work | Ready for Retest | Closed | Deferred */
+  /* Test run sessions: a frozen case scope; each case result is a run with testRunId. */
+  testRuns: [
+    { id: "tr-1", code: "TR-001", name: "HWIL Integration full regression", operator: "J. Novak", status: "Active",
+      planId: "", systemId: "sys-3", componentId: "", caseIds: ["tc-1", "tc-2", "tc-8", "tc-9", "tc-10", "tc-12"],
+      createdAt: "2026-08-25T13:00:00.000Z", startedAt: "2026-08-25T13:00:00.000Z", completedAt: "",
+      notes: "Scope frozen at start: every active case in SYS-03 HWIL Integration, including the E-Stop Network subcomponent." }
+  ],
+
   defects: [
     { id: "def-1", code: "DEF-001", title: "Suspension travel under-predicted on washboard", severity: "Major", status: "Fix In Work",
       componentId: "cmp-5", caseIds: ["tc-3"], runId: "run-6", owner: "Vehicle Model IPT", opened: "2026-09-01", closed: "",

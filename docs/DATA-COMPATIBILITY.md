@@ -23,6 +23,11 @@ This remains the release contract. [HARDENING.md](HARDENING.md) identifies imple
   validates types and relationships after normalizing supported legacy defaults.
 - Migration already handles some older shapes, including procedure-owned
   criteria and plan decisions previously stored as free text.
+- The regression-enabled independent copy's field shape (`testRuns`,
+  `parentComponentId`, `testRunId`, system-level cases, removal review fields and
+  its private extensions) is supported natively, using that copy's own field names.
+  It is tested with a synthetic fixture derived from its schema skeleton, not its
+  data; see [Hardening](HARDENING.md) for the value-level rules still unverified.
 - JSON import replaces the active database. CSV only transfers selected fields.
 - Linked evidence files are not included in JSON unless embedded in documents.
 - Different file locations or browser profiles may expose different storage.

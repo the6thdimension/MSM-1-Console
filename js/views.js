@@ -2,12 +2,12 @@
    Views — page renderers + user actions
    ============================================================ */
 
-const CASE_STATUSES = ["Draft", "Ready", "In Progress", "Complete", "Blocked"];
+const CASE_STATUSES = ["Draft", "Ready", "In Progress", "Complete", "Blocked", "Retired"];
 const PRIORITIES = ["Critical", "High", "Medium", "Low"];
 const REQ_TYPES = ["Performance", "Functional", "Safety", "Environmental", "Operational", "Interface"];
 const VERIF_METHODS = ["Test", "Analysis", "Inspection", "Demonstration"];
 const PLAN_STATUSES = ["Planning", "Active", "Complete", "On Hold", "Closed"];
-const RUN_RESULTS = ["Pass", "Fail", "Blocked", "In Progress"];
+const RUN_RESULTS = ["Pass", "Fail", "Blocked", "In Progress", "Waived", "Review for Removal"];
 const RISK_STATUSES = ["Open", "Mitigating", "Monitoring", "Closed"];
 const MIT_FLOW = ["Proposed", "Approved", "In Progress", "Complete", "Verified"];
 const RISK_CATEGORIES = ["Technical", "Schedule", "Cost", "Safety", "Programmatic"];
@@ -29,9 +29,28 @@ const DEFECT_STATUSES = ["Open", "In Analysis", "Fix In Work", "Ready for Retest
 function runDots(caseId) {
   const runs = Store.runsOf(caseId).slice(0, 5).reverse();
   if (!runs.length) return `<span class="faint small">—</span>`;
-  const cls = { "Pass": "pass", "Fail": "fail", "Blocked": "blocked", "In Progress": "inprogress" };
   return `<span class="dot-strip" title="${runs.map(r => `${r.date || ""} ${r.result}`).join(" · ")}">${
-    runs.map(r => `<span class="run-dot ${cls[r.result] || "blocked"}"></span>`).join("")}</span>`;
+    runs.map(r => `<span class="run-dot ${RUN_DOT[r.result] || "blocked"}"></span>`).join("")}</span>`;
+}
+
+/* Owning component chip, or the system for a system-level case. */
+function caseOwnerChip(tc) {
+  const comp = tc.componentId ? Store.get("components", tc.componentId) : null;
+  if (comp) return chip("components", comp);
+  const sys = tc.systemId ? Store.get("systems", tc.systemId) : null;
+  return sys ? `${chip("systems", sys)} <span class="faint small">system-level</span>` : `<span class="faint">—</span>`;
+}
+
+/* Every component as a select option, in system → tree order with ↳ for nesting. */
+function componentOptions(filter) {
+  const out = [];
+  for (const s of Store.all("systems")) {
+    for (const { comp, depth } of Store.componentTree(s.id)) {
+      if (filter && !filter(comp)) continue;
+      out.push({ value: comp.id, code: comp.code, label: `${s.code} › ${"  ".repeat(depth)}${depth ? "↳ " : ""}${comp.code} ${comp.name}` });
+    }
+  }
+  return out;
 }
 
 /* Evidence refs: one per line; http(s) refs become links. */
@@ -340,16 +359,22 @@ Views.dashboard = function () {
     </div>`;
 };
 
-function planCounts(plan) {
-  const counts = { pass: 0, fail: 0, blocked: 0, open: 0 };
-  (plan.caseIds || []).forEach(id => {
-    const run = Store.latestRun(id);
+/* Result buckets for a set of runs (null = not run). `blocked` covers Blocked and In Progress. */
+function resultCounts(runs) {
+  const counts = { pass: 0, fail: 0, blocked: 0, open: 0, waived: 0, removal: 0 };
+  for (const run of runs) {
     if (!run) counts.open++;
     else if (run.result === "Pass") counts.pass++;
     else if (run.result === "Fail") counts.fail++;
+    else if (run.result === "Waived") counts.waived++;
+    else if (run.result === "Review for Removal") counts.removal++;
     else counts.blocked++;
-  });
+  }
   return counts;
+}
+
+function planCounts(plan) {
+  return resultCounts((plan.caseIds || []).map(id => Store.latestRun(id)));
 }
 
 /* ================= SYSTEMS ================= */
@@ -360,9 +385,9 @@ Views.systems = function () {
     const comps = Store.componentsOf(s.id);
     const cases = Store.casesOfSystem(s.id);
     const sysSt = Store.systemStatus(s.id);
-    const pills = comps.map(c => {
+    const pills = Store.componentTree(s.id).map(({ comp: c, depth }) => {
       const st = Store.componentStatus(c.id);
-      return `<span class="comp-pill st-${COMP_ST_SLUG[st]}" title="${esc(c.code)} ${esc(c.name)} — ${st}">${esc(c.name)}</span>`;
+      return `<span class="comp-pill st-${COMP_ST_SLUG[st]}${depth ? " sub" : ""}" title="${esc(c.code)} ${esc(c.name)} — ${st}${depth ? ` · subcomponent level ${depth}` : ""}">${depth ? "↳ " : ""}${esc(c.name)}</span>`;
     }).join("");
     return `<a class="sys-card" href="#/systems/${s.id}">
       <span class="sys-lamp st-${COMP_ST_SLUG[sysSt]}" title="System status: ${sysSt}"></span>
@@ -383,31 +408,37 @@ Views.systems = function () {
 Views.systemDetail = function (id) {
   const s = Store.get("systems", id);
   if (!s) return notFound("System");
-  const comps = Store.componentsOf(id);
-  const compRows = comps.map(c => {
+  const compRows = Store.componentTree(id).map(({ comp: c, depth }) => {
     const cases = Store.casesOf(c.id);
     const reqs = Store.all("requirements").filter(r => (r.componentIds || []).includes(c.id));
     const openDefs = Store.defectsOfComponent(c.id).filter(d => Store.defectIsOpen(d)).length;
     return `<tr>
       <td>${codeLink("components", c)}</td>
-      <td><a href="#/components/${c.id}">${esc(c.name)}</a><div class="faint small">${esc(c.description)}</div></td>
+      <td><div class="tree-cell" style="--depth:${depth}">${depth ? `<span class="tree-arrow">↳</span>` : ""}<div><a href="#/components/${c.id}">${esc(c.name)}</a>
+        <div class="faint small">${depth ? `Subcomponent · level ${depth} — ` : ""}${esc(c.description)}</div></div></div></td>
       <td>${badge(Store.componentStatus(c.id))}</td>
       <td class="num">${cases.length}</td>
       <td class="num">${reqs.length}</td>
       <td class="num">${openDefs || `<span class="faint">0</span>`}</td>
-      <td class="inline-actions">${actBtn("Edit", "edit-component", c.id)}${actBtn("Del", "del-component", c.id)}</td>
+      <td class="inline-actions">${actBtn("+ Sub", "add-subcomponent", c.id)}${actBtn("Edit", "edit-component", c.id)}${actBtn("Del", "del-component", c.id)}</td>
     </tr>`;
   }).join("");
+  const sysCases = Store.systemLevelCases(id);
+  const runs = Store.testRunsSorted(t => t.systemId === id);
 
   return `
     ${pageHead(
       [{ label: "Systems", href: "#/systems" }, { label: s.code }],
       `<span class="code-inline">${esc(s.code)}</span>${esc(s.name)}`,
-      actBtn("Edit", "edit-system", s.id) + actBtn("Delete", "del-system", s.id) + actBtn("+ Component", "add-component", s.id, "", false),
+      actBtn("Edit", "edit-system", s.id) + actBtn("Delete", "del-system", s.id) + actBtn("+ Component", "add-component", s.id) +
+      actBtn("▶ Full Regression", "full-regression", s.id, "", false),
       esc(s.description))}
+    ${regressionScopePanel(s)}
     ${panel("Components", compRows
       ? `<div class="table-scroll"><table class="data"><thead><tr><th>Code</th><th>Component</th><th>Status</th><th>Test Cases</th><th>Reqs</th><th>Open Defects</th><th></th></tr></thead><tbody>${compRows}</tbody></table></div>`
-      : emptyMsg("No components under this system yet — add one."), "", true)}`;
+      : emptyMsg("No components under this system yet — add one."), "", true)}
+    ${sysCases.length ? panel("System-Level Test Cases", `<div class="table-scroll"><table class="data"><thead><tr><th>Code</th><th>Title</th><th>Pri</th><th>Status</th><th>Latest Run</th></tr></thead><tbody>${sysCases.map(caseRow).join("")}</tbody></table></div>`, "", true) : ""}
+    ${testRunsPanel("Test Runs for This System", runs, "No test runs yet — start a full regression above.")}`;
 };
 
 Views.componentDetail = function (id) {
@@ -427,24 +458,39 @@ Views.componentDetail = function (id) {
     <td>${badge(d.status)}</td>
   </tr>`).join("");
 
+  const ancestors = Store.ancestorIds(id).map(a => Store.get("components", a));
+  const children = Store.childrenOf(id);
+  const depth = ancestors.length;
+  const childRows = children.map(ch => `<tr>
+    <td>${codeLink("components", ch)}</td>
+    <td><a href="#/components/${ch.id}">${esc(ch.name)}</a></td>
+    <td>${badge(Store.componentStatus(ch.id))}</td>
+    <td class="num">${Store.casesOf(ch.id).length}</td>
+    <td class="num">${Store.descendantIds(ch.id).size - 1}</td>
+  </tr>`).join("");
+
   return `
     ${pageHead(
-      [{ label: "Systems", href: "#/systems" }, { label: sys ? sys.code : "?", href: sys ? `#/systems/${sys.id}` : "#/systems" }, { label: c.code }],
+      [{ label: "Systems", href: "#/systems" }, { label: sys ? sys.code : "?", href: sys ? `#/systems/${sys.id}` : "#/systems" },
+       ...ancestors.map(a => ({ label: a.code, href: `#/components/${a.id}` })), { label: c.code }],
       `<span class="code-inline">${esc(c.code)}</span>${esc(c.name)}`,
-      actBtn("Edit", "edit-component", c.id) + actBtn("Delete", "del-component", c.id) + actBtn("+ Test Case", "add-case", c.id, "", false),
-      `${badge(st)} &nbsp; ${esc(c.description)}`)}
+      actBtn("Edit", "edit-component", c.id) + actBtn("Delete", "del-component", c.id) + actBtn("+ Subcomponent", "add-subcomponent", c.id) + actBtn("+ Test Case", "add-case", c.id, "", false),
+      `${badge(st)} ${badge(depth ? `Subcomponent · level ${depth}` : "Top-level component", depth ? "b-purple" : "b-blue")} &nbsp; ${esc(c.description)}`)}
     <div class="grid-2">
       <div>
         ${panel("Test Cases", caseRows
           ? `<div class="table-scroll"><table class="data"><thead><tr><th>Code</th><th>Title</th><th>Pri</th><th>Status</th><th>Latest Run</th></tr></thead><tbody>${caseRows}</tbody></table></div>`
           : emptyMsg("No test cases for this component yet."), "", true)}
+        ${panel("Subcomponents", childRows
+          ? `<div class="table-scroll"><table class="data"><thead><tr><th>Code</th><th>Subcomponent</th><th>Status</th><th>Cases</th><th>Nested</th></tr></thead><tbody>${childRows}</tbody></table></div>`
+          : emptyMsg("No subcomponents."), actBtn("+ Subcomponent", "add-subcomponent", c.id), true)}
       </div>
       <div>
         ${panel("Defects", defRows
           ? `<div class="table-scroll"><table class="data"><thead><tr><th>Code</th><th>Defect</th><th>Severity</th><th>Status</th></tr></thead><tbody>${defRows}</tbody></table></div>`
           : emptyMsg("No defects recorded against this component."), actBtn("+ Defect", "add-defect-comp", c.id), true)}
         ${panel("Traced Requirements", chips("requirements", reqs, "No requirements trace to this component"))}
-        ${panel("Parent System", sys ? chip("systems", sys) : "—")}
+        ${panel("Parent", `${sys ? chip("systems", sys) : "—"}${ancestors.length ? ` › ${ancestors.map(a => chip("components", a)).join(" › ")}` : ""}`)}
       </div>
     </div>`;
 };
@@ -562,10 +608,12 @@ Views.cases = function (params) {
   const statF = params.get("status") || "";
   const planF = params.get("plan") || "";
   const procF = params.get("procedure") || "";
+  const reviewF = params.get("review") || "";
   let cases = Store.all("cases");
-  if (compF) cases = cases.filter(tc => tc.componentId === compF);
+  if (compF) { const branch = Store.descendantIds(compF); cases = cases.filter(tc => branch.has(tc.componentId)); }
   if (statF) cases = cases.filter(tc => tc.status === statF);
   if (procF) cases = cases.filter(tc => tc.procedureId === procF);
+  if (reviewF) cases = cases.filter(tc => tc.removalNominated);
   if (planF) {
     const plan = Store.get("plans", planF);
     const ids = new Set(plan ? plan.caseIds : []);
@@ -579,15 +627,16 @@ Views.cases = function (params) {
     return `<tr>
       <td class="bulk-cell"><input type="checkbox" data-bulk="${tc.id}"></td>
       <td>${codeLink("cases", tc)}${tc.extKey ? `<div class="faint mono" style="font-size:9.5px">${esc(tc.extKey)}</div>` : ""}</td>
-      <td><a href="#/cases/${tc.id}">${esc(tc.title)}</a></td>
+      <td><a href="#/cases/${tc.id}">${esc(tc.title)}</a>${tc.removalNominated ? ` ${badge("Review for Removal")}` : ""}</td>
       <td>${proc ? codeLink("procedures", proc) : `<span class="faint small">—</span>`}</td>
-      <td>${comp ? chip("components", comp) : "—"}</td>
+      <td>${caseOwnerChip(tc)}</td>
       <td>${plans.map(p => codeLink("plans", p)).join(" ") || `<span class="faint small">—</span>`}</td>
       <td><button class="badge-btn" data-act="cycle-case-status" data-id="${tc.id}" title="Click to cycle status">${badge(tc.status)}</button></td>
       <td>${runDots(tc.id)}</td>
       <td>${runBadge(Store.latestRun(tc.id))}</td>
     </tr>`;
   }).join("");
+  const nominated = Store.all("cases").filter(tc => tc.removalNominated).length;
 
   return `
     ${pageHead([{ label: "Test Cases" }], "Test Cases",
@@ -595,9 +644,10 @@ Views.cases = function (params) {
       "Procedures spawn test cases; test cases roll up into test plans; runs record each execution of a case.")}
     <div class="filter-bar">
       <select data-filter="procedure"><option value="">All procedures</option>${Store.all("procedures").map(p => `<option value="${p.id}" ${procF === p.id ? "selected" : ""}>${esc(p.code)} ${esc(p.title)}</option>`).join("")}</select>
-      <select data-filter="component"><option value="">All components</option>${Store.all("components").map(c => `<option value="${c.id}" ${compF === c.id ? "selected" : ""}>${esc(c.code)} ${esc(c.name)}</option>`).join("")}</select>
+      <select data-filter="component"><option value="">All components</option>${componentOptions().map(o => `<option value="${o.value}" ${compF === o.value ? "selected" : ""}>${esc(o.label)}</option>`).join("")}</select>
       <select data-filter="status"><option value="">All statuses</option>${CASE_STATUSES.map(s => `<option ${statF === s ? "selected" : ""}>${s}</option>`).join("")}</select>
       <select data-filter="plan"><option value="">All plans</option>${Store.all("plans").map(p => `<option value="${p.id}" ${planF === p.id ? "selected" : ""}>${esc(p.code)} ${esc(p.name)}</option>`).join("")}</select>
+      <select data-filter="review"><option value="">All cases</option><option value="1" ${reviewF ? "selected" : ""}>Review queue — nominated for removal (${nominated})</option></select>
       <span class="faint mono small">${cases.length} shown</span>
     </div>
     ${panel("Catalog", rows
@@ -625,16 +675,20 @@ Views.caseDetail = function (id) {
   const unaccredited = Store.unaccreditedAssets(tc);
 
   const defects = Store.defectsOfCase(id);
+  const ownerSys = !comp && tc.systemId ? Store.get("systems", tc.systemId) : null;
+  const specRows = [["Preconditions", "preconditions"], ["Test Data", "testData"], ["Expected Results", "expectedResults"], ["Pass / Fail Criteria", "passFailCriteria"]]
+    .filter(([, k]) => tc[k]).map(([label, k]) => `<dt>${label}</dt><dd style="white-space:pre-wrap">${esc(tc[k])}</dd>`).join("");
 
   const runRows = runs.map(r => {
     const plan = r.planId ? Store.get("plans", r.planId) : null;
+    const trun = r.testRunId ? Store.get("testRuns", r.testRunId) : null;
     return `<tr>
       <td><span class="code">${esc(r.code)}</span>${r.extKey ? `<div style="font-size:9.5px;margin-top:1px">${extKeyTag(r.extKey)}</div>` : ""}</td>
       <td class="num">${esc(r.date || "")}</td>
       <td>${badge(r.result)}</td>
       <td class="small">${r.measured ? `<span class="mono">${esc(r.measured)}</span>` : `<span class="faint">—</span>`}</td>
       <td>${esc(r.operator || "")}</td>
-      <td>${plan ? codeLink("plans", plan) : "—"}</td>
+      <td>${plan ? codeLink("plans", plan) : "—"}${trun ? `<div>${testRunLink(trun)}</div>` : ""}</td>
       <td class="small">${esc(r.notes || "")}${r.evidence ? `<div>${evidenceRefs(r.evidence)}</div>` : ""}</td>
       <td class="inline-actions">${actBtn("Edit", "edit-run", r.id)}${actBtn("Del", "del-run", r.id)}</td>
     </tr>`;
@@ -660,10 +714,11 @@ Views.caseDetail = function (id) {
             <dt>Status</dt><dd>${badge(tc.status)}</dd>
             <dt>Venue</dt><dd>${tc.venue ? badge(tc.venue) : `<span class="faint">—</span>`}</dd>
             <dt>Test Type</dt><dd>${tc.testType ? badge(tc.testType) : `<span class="faint">—</span>`}</dd>
-            <dt>System</dt><dd>${sys ? chip("systems", sys) : "—"}</dd>
-            <dt>Component</dt><dd>${comp ? chip("components", comp) : "—"}</dd>
+            <dt>System</dt><dd>${(sys || ownerSys) ? chip("systems", sys || ownerSys) : "—"}</dd>
+            <dt>Component</dt><dd>${comp ? chip("components", comp) : `<span class="faint small">System-level case</span>`}</dd>
             <dt>Procedure</dt><dd>${proc ? chip("procedures", proc) : `<span class="faint small">No procedure assigned</span>`}</dd>
-          </dl>`)}
+          </dl>
+          ${specRows ? `<div class="section-gap"></div><dl class="def-grid">${specRows}</dl>` : ""}`)}
         ${unaccredited.length ? `<div class="ready-strip nogo"><span class="lamp"></span>
           DATA CREDIBILITY CAVEAT — USES M&amp;S ASSET${unaccredited.length > 1 ? "S" : ""} NOT YET ACCREDITED: ${unaccredited.map(r => esc(r.code)).join(", ")}
         </div>` : ""}
@@ -677,8 +732,9 @@ Views.caseDetail = function (id) {
         ${auditPanel(tc.id)}
       </div>
       <div>
+        ${removalPanel(tc)}
         ${panel("Run History", runRows
-          ? `<div class="table-scroll"><table class="data"><thead><tr><th>Run</th><th>Date</th><th>Result</th><th>Measured</th><th>Operator</th><th>Plan</th><th>Notes / Evidence</th><th></th></tr></thead><tbody>${runRows}</tbody></table></div>`
+          ? `<div class="table-scroll"><table class="data"><thead><tr><th>Run</th><th>Date</th><th>Result</th><th>Measured</th><th>Operator</th><th>Plan / Test Run</th><th>Notes / Evidence</th><th></th></tr></thead><tbody>${runRows}</tbody></table></div>`
           : emptyMsg("Never executed. Record the first run."), "", true)}
       </div>
     </div>
@@ -694,9 +750,9 @@ Views.trace = function (params) {
   const systems = sysF ? Store.all("systems").filter(s => s.id === sysF) : Store.all("systems");
   const groups = [];
   for (const s of systems) {
-    const comps = Store.componentsOf(s.id);
     const cases = [];
-    for (const c of comps) cases.push(...Store.casesOf(c.id));
+    for (const { comp } of Store.componentTree(s.id)) cases.push(...Store.casesOf(comp.id));
+    cases.push(...Store.systemLevelCases(s.id));
     if (cases.length) groups.push({ system: s, cases });
   }
   const allCases = groups.flatMap(g => g.cases);
@@ -909,12 +965,13 @@ Views.planDetail = function (id) {
     ${pageHead(
       [{ label: "Test Plans", href: "#/plans" }, { label: p.code }],
       `<span class="code-inline">${esc(p.code)}</span>${esc(p.name)}`,
-      actBtn("Edit", "edit-plan", p.id) + actBtn("Delete", "del-plan", p.id) + actBtn("+ Assign Cases", "plan-add-cases", p.id, "", false),
-      `${p.extKey ? `Issue: ${extKeyTag(p.extKey)} &nbsp;·&nbsp; ` : ""}${esc(p.description)}`)}
+      actBtn("Edit", "edit-plan", p.id) + actBtn("Delete", "del-plan", p.id) + actBtn("+ Assign Cases", "plan-add-cases", p.id) +
+      actBtn("Auto-Fill Regression", "plan-autofill", p.id) + actBtn("▶ Start Run", "plan-start-run", p.id, "", false),
+      `${p.extKey ? `Issue: ${extKeyTag(p.extKey)} &nbsp;·&nbsp; ` : ""}${p.regressionSystemId && Store.get("systems", p.regressionSystemId) ? `Regression scope: ${chip("systems", Store.get("systems", p.regressionSystemId))} &nbsp;·&nbsp; ` : ""}${esc(p.description)}`)}
     <div class="kpi-row">
       <div class="kpi" style="--kpi-accent:var(--purple)"><div class="kpi-label">Phase</div><div class="kpi-value" style="font-size:26px">${esc(p.phase || "—")}</div><div class="kpi-foot">${badge(p.status)}</div></div>
       <div class="kpi" style="--kpi-accent:var(--blue)"><div class="kpi-label">Window</div><div class="kpi-value" style="font-size:22px">${esc(p.start || "?")}</div><div class="kpi-foot">through ${esc(p.end || "?")}</div></div>
-      <div class="kpi" style="--kpi-accent:var(--green)"><div class="kpi-label">Passing</div><div class="kpi-value">${c.pass}<small>/${cases.length}</small></div><div class="kpi-foot">${c.fail} fail · ${c.blocked} blocked/ip · ${c.open} not run</div></div>
+      <div class="kpi" style="--kpi-accent:var(--green)"><div class="kpi-label">Passing</div><div class="kpi-value">${c.pass}<small>/${cases.length}</small></div><div class="kpi-foot">${c.fail} fail · ${c.waived} waived · ${c.removal} for review · ${c.blocked} blocked/ip · ${c.open} not run</div></div>
       <div class="kpi" style="--kpi-accent:var(--amber)"><div class="kpi-label">Progress</div><div style="margin-top:14px">${progressMeter(c)}</div><div class="kpi-foot" style="margin-top:8px">${cases.length ? Math.round((c.pass / cases.length) * 100) : 0}% complete-pass</div></div>
     </div>
     ${(() => {
@@ -933,6 +990,7 @@ Views.planDetail = function (id) {
     ${panel("Assigned Test Cases", rows
       ? `<div class="table-scroll"><table class="data"><thead><tr><th>Code</th><th>Title</th><th>Component</th><th>Procedure</th><th>Status</th><th>Latest Run</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
       : emptyMsg("No test cases assigned. Use “+ Assign Cases”."), "", true)}
+    ${testRunsPanel("Test Runs from This Plan", Store.testRunsSorted(t => t.planId === p.id), "No test runs yet — use ▶ Start Run.")}
     ${auditPanel(p.id)}
     ${extLinksPanel("plans", p)}`;
 };
@@ -946,6 +1004,7 @@ Views.runs = function (params) {
   const rows = runs.map(r => {
     const tc = Store.get("cases", r.caseId);
     const plan = r.planId ? Store.get("plans", r.planId) : null;
+    const trun = r.testRunId ? Store.get("testRuns", r.testRunId) : null;
     return `<tr>
       <td><span class="code">${esc(r.code)}</span>${r.extKey ? `<div style="font-size:9.5px;margin-top:1px">${extKeyTag(r.extKey)}</div>` : ""}</td>
       <td class="num">${esc(r.date || "")}</td>
@@ -953,7 +1012,7 @@ Views.runs = function (params) {
       <td>${badge(r.result)}</td>
       <td class="small">${r.measured ? `<span class="mono">${esc(r.measured)}</span>` : `<span class="faint">—</span>`}</td>
       <td>${esc(r.operator || "")}</td>
-      <td>${plan ? codeLink("plans", plan) : "—"}</td>
+      <td>${plan ? codeLink("plans", plan) : "—"}${trun ? `<div>${testRunLink(trun)}</div>` : ""}</td>
       <td class="small" style="max-width:300px">${esc(r.notes || "")}${r.evidence ? `<div>${evidenceRefs(r.evidence)}</div>` : ""}</td>
       <td class="inline-actions">${actBtn("Edit", "edit-run", r.id)}${actBtn("Del", "del-run", r.id)}</td>
     </tr>`;
@@ -962,13 +1021,14 @@ Views.runs = function (params) {
   return `
     ${pageHead([{ label: "Test Runs" }], "Test Runs",
       actBtn("● Record Run", "record-run-any", null, "", false),
-      "The execution log: every recorded attempt at a test case, newest first.")}
+      "Test run sessions group many cases into one campaign pass; the log below records every individual case result, newest first.")}
+    ${testRunsPanel("Test Run Sessions", Store.testRunsSorted(), "No test run sessions yet — start one from a plan (▶ Start Run) or a system (▶ Full Regression).")}
     <div class="filter-bar">
       <select data-filter="result"><option value="">All results</option>${RUN_RESULTS.map(s => `<option ${resF === s ? "selected" : ""}>${s}</option>`).join("")}</select>
       <span class="faint mono small">${runs.length} shown</span>
     </div>
     ${panel("Log", rows
-      ? `<div class="table-scroll"><table class="data"><thead><tr><th>Run</th><th>Date</th><th>Test Case</th><th>Result</th><th>Measured</th><th>Operator</th><th>Plan</th><th>Notes / Evidence</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+      ? `<div class="table-scroll"><table class="data"><thead><tr><th>Run</th><th>Date</th><th>Test Case</th><th>Result</th><th>Measured</th><th>Operator</th><th>Plan / Test Run</th><th>Notes / Evidence</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
       : emptyMsg("No runs recorded."), "", true)}`;
 };
 
@@ -1296,18 +1356,21 @@ Views.sitrep = function () {
 };
 
 /* ================= EXECUTE MODE ================= */
-Views.execute = function (caseId) {
+Views.execute = function (caseId, params = new URLSearchParams()) {
   const tc = Store.get("cases", caseId);
   if (!tc) return notFound("Test case");
   const proc = tc.procedureId ? Store.get("procedures", tc.procedureId) : null;
+  // When launched from a test run, the result is recorded into it and Cancel/Save return there.
+  const trun = params.get("tr") ? Store.get("testRuns", params.get("tr")) : null;
+  const back = trun ? testRunHref(trun.id, params.get("comp")) : `#/cases/${tc.id}`;
   if (!proc) return `${pageHead([{ label: "Test Cases", href: "#/cases" }, { label: tc.code }], "Execute", "",
     "This case has no procedure — assign one, or use “Record Run” for a quick log.")}
-    <div class="empty" style="padding:50px"><a href="#/cases/${tc.id}">Back to ${esc(tc.code)}</a></div>`;
+    <div class="empty" style="padding:50px"><a href="${back}">Back</a></div>`;
 
   const entry = Store.criteriaOf(proc.id, "entry");
   const entryOpen = entry.filter(x => x.status === "open");
   const ready = entry.length > 0 && entryOpen.length === 0;
-  const plans = Store.plansOf(tc.id);
+  const plans = trun && trun.planId ? [Store.get("plans", trun.planId)].filter(Boolean) : Store.plansOf(tc.id);
 
   const steps = (proc.steps || []).map((s, i) => `
     <label class="exec-step" id="exec-step-row-${i}">
@@ -1320,8 +1383,9 @@ Views.execute = function (caseId) {
     ${pageHead(
       [{ label: "Procedures", href: "#/procedures" }, { label: proc.code, href: `#/procedures/${proc.id}` }, { label: tc.code, href: `#/cases/${tc.id}` }, { label: "Execute" }],
       `<span class="code-inline">▶</span>Executing ${esc(tc.code)} — ${esc(tc.title)}`,
-      `<a class="btn btn-ghost btn-sm" href="#/cases/${tc.id}">Cancel</a>`,
+      `<a class="btn btn-ghost btn-sm" href="${back}">Cancel</a>`,
       `Procedure ${esc(proc.code)} ${esc(proc.title)} · ${tc.venue ? `venue ${esc(tc.venue)} · ` : ""}check off steps as you go, capture results on the right, then complete the run.`)}
+    ${trun ? `<div class="ready-strip info"><span class="lamp"></span>RECORDING INTO TEST RUN ${esc(trun.code || "")} — ${esc(trun.name || "")}</div>` : ""}
     <div class="ready-strip ${ready ? "go" : "nogo"}">
       <span class="lamp"></span>
       ${ready ? "ENTRY CRITERIA SATISFIED — CLEARED FOR EXECUTION"
@@ -2000,12 +2064,24 @@ const Actions = {
   },
 
   /* ---- components ---- */
-  "add-component": systemId => Modal.open("New Component", componentFields(systemId), { systemId }, v => {
-    const c = Store.add("components", v);
+  "add-component": systemId => Modal.open("New Component", componentFields(), { systemId }, v => {
+    const c = Store.add("components", placeComponent(v));
     Toast.show(`${c.code} created`); App.go(`#/components/${c.id}`);
   }),
-  "edit-component": id => Modal.open("Edit Component", componentFields(), Store.get("components", id), v => {
-    Store.update("components", id, v); Toast.show("Saved"); App.render();
+  "add-subcomponent": parentId => {
+    const parent = Store.get("components", parentId);
+    Modal.open(`New Subcomponent of ${parent.code}`, componentFields(), { systemId: parent.systemId, parentComponentId: parent.id }, v => {
+      const c = Store.add("components", placeComponent(v));
+      Toast.show(`${c.code} created under ${parent.code}`); App.go(`#/components/${c.id}`);
+    });
+  },
+  "edit-component": id => Modal.open("Edit Component", componentFields(id), Store.get("components", id), v => {
+    const before = Store.get("components", id).systemId;
+    v = placeComponent(v);
+    Store.update("components", id, v);
+    // Moving to another system takes the whole subtree along so the hierarchy stays intact.
+    if (v.systemId !== before) for (const d of Store.descendantIds(id)) if (d !== id) Store.update("components", d, { systemId: v.systemId });
+    Toast.show("Saved"); App.render();
   }),
   "del-component": id => {
     const c = Store.get("components", id);
@@ -2032,11 +2108,11 @@ const Actions = {
 
   /* ---- test cases ---- */
   "add-case": componentId => Modal.open("New Test Case", caseFields(componentId), { componentId, status: "Draft", priority: "Medium" }, v => {
-    const tc = Store.add("cases", v);
+    const tc = Store.add("cases", placeCase(v));
     Toast.show(`${tc.code} created`); App.go(`#/cases/${tc.id}`);
   }),
   "edit-case": id => Modal.open("Edit Test Case", caseFields(), Store.get("cases", id), v => {
-    Store.update("cases", id, v); Toast.show("Saved"); App.render();
+    Store.update("cases", id, placeCase(v)); Toast.show("Saved"); App.render();
   }),
   "del-case": id => {
     const tc = Store.get("cases", id);
@@ -2343,7 +2419,7 @@ const Actions = {
 
   /* ---- case under a procedure (reframed hierarchy) ---- */
   "add-case-proc": procId => Modal.open("New Test Case", caseFields(), { procedureId: procId, status: "Draft", priority: "Medium" }, v => {
-    const tc = Store.add("cases", v);
+    const tc = Store.add("cases", placeCase(v));
     Toast.show(`${tc.code} created`); App.go(`#/cases/${tc.id}`);
   }),
 
@@ -2364,13 +2440,17 @@ const Actions = {
       const line = unchecked.length === boxes.length ? "No procedure steps checked off." : `Steps not completed: ${unchecked.join(", ")}.`;
       notes += (notes ? "\n" : "") + line;
     }
-    const run = Store.add("runs", {
+    const params = App.params(), trun = params.get("tr") ? Store.get("testRuns", params.get("tr")) : null;
+    const record = {
       caseId: id, date, operator: val("exec-operator"), planId: val("exec-plan") || null,
       result, measured: val("exec-measured"), evidence: val("exec-evidence"), notes
-    });
+    };
+    if (trun) record.testRunId = trun.id;
+    const run = Store.add("runs", record);
 
     Toast.show(`${run.code} recorded — ${result}`);
-    App.go(`#/cases/${id}`);
+    if (trun) { App.anchor(`trc-${id}`); App.go(testRunHref(trun.id, params.get("comp"))); }
+    else App.go(`#/cases/${id}`);
     if (result === "Fail") {
       openDefectForm({ caseIds: [id], componentId: tc.componentId, runId: run.id, title: `${tc.code}: ` });
     }
@@ -2379,7 +2459,9 @@ const Actions = {
   /* ---- inline status cycling ---- */
   "cycle-case-status": id => {
     const tc = Store.get("cases", id);
-    const next = CASE_STATUSES[(CASE_STATUSES.indexOf(tc.status) + 1) % CASE_STATUSES.length];
+    // Retirement is a disposition (Review / Removal panel), never a click-through state.
+    const cycle = CASE_STATUSES.filter(s => s !== "Retired");
+    const next = cycle[(cycle.indexOf(tc.status) + 1) % cycle.length];
     Store.update("cases", id, { status: next });
     App.render();
   },
@@ -2562,10 +2644,14 @@ function systemFields() {
     { key: "description", label: "Description", type: "textarea" }
   ];
 }
-function componentFields() {
+function componentFields(selfId) {
+  // A component cannot be nested under itself or its own descendants.
+  const blocked = selfId ? Store.descendantIds(selfId) : new Set();
   return [
     { key: "name", label: "Name", required: true, half: true },
     { key: "systemId", label: "System", type: "select", required: true, half: true, options: Store.all("systems").map(s => ({ value: s.id, label: `${s.code} ${s.name}` })) },
+    { key: "parentComponentId", label: "Parent Component (blank = top-level; must be in the same system)", type: "select", allowEmpty: true,
+      options: componentOptions(c => !blocked.has(c.id)) },
     { key: "description", label: "Description", type: "textarea" }
   ];
 }
@@ -2587,13 +2673,18 @@ function caseFields(componentId) {
   return [
     { key: "title", label: "Title", required: true },
     { key: "objective", label: "Objective", type: "textarea" },
-    { key: "componentId", label: "Component", type: "select", required: true, half: true, default: componentId, options: Store.all("components").map(c => ({ value: c.id, label: `${c.code} ${c.name}` })) },
+    { key: "componentId", label: "Component (blank = system-level case)", type: "select", allowEmpty: true, half: true, default: componentId, options: componentOptions() },
+    { key: "systemId", label: "System (required for system-level cases)", type: "select", allowEmpty: true, half: true, options: Store.all("systems").map(s => ({ value: s.id, label: `${s.code} ${s.name}` })) },
     { key: "procedureId", label: "Procedure", type: "select", half: true, allowEmpty: true, options: Store.all("procedures").map(p => ({ value: p.id, label: `${p.code} ${p.title}` })) },
     { key: "priority", label: "Priority", type: "select", half: true, options: PRIORITIES },
     { key: "status", label: "Status", type: "select", half: true, options: CASE_STATUSES },
     { key: "venue", label: "Venue (LVC)", type: "select", half: true, allowEmpty: true, options: VENUES },
     { key: "testType", label: "Test Type", type: "select", half: true, allowEmpty: true, options: TEST_TYPES },
     { key: "extKey", label: "Jira / Zephyr Issue Key (sync)", half: true },
+    { key: "preconditions", label: "Preconditions", type: "textarea" },
+    { key: "testData", label: "Test Data", type: "textarea" },
+    { key: "expectedResults", label: "Expected Results", type: "textarea" },
+    { key: "passFailCriteria", label: "Pass / Fail Criteria", type: "textarea" },
     { key: "requirementIds", label: "Verifies Requirements", type: "multicheck", options: Store.all("requirements").map(r => ({ value: r.id, code: r.code, label: r.title })) },
     { key: "resourceIds", label: "Resources / M&S Assets Used", type: "multicheck", options: Store.all("resources").map(r => ({ value: r.id, code: r.code, label: r.name })) }
   ];
@@ -2614,7 +2705,8 @@ function planFields() {
     { key: "start", label: "Start", type: "date", half: true },
     { key: "end", label: "End", type: "date", half: true },
     { key: "extKey", label: "Jira / Zephyr Issue Key (sync)", half: true },
-    { key: "decisionId", label: "Supports Decision (IDSK)", type: "select", half: true, allowEmpty: true, options: Store.all("decisions").map(d => ({ value: d.id, label: `${d.code} ${d.title}` })) }
+    { key: "decisionId", label: "Supports Decision (IDSK)", type: "select", half: true, allowEmpty: true, options: Store.all("decisions").map(d => ({ value: d.id, label: `${d.code} ${d.title}` })) },
+    { key: "regressionSystemId", label: "Regression Scope System (Auto-Fill / Full Regression)", type: "select", half: true, allowEmpty: true, options: Store.all("systems").map(s => ({ value: s.id, label: `${s.code} ${s.name}` })) }
   ];
 }
 
@@ -2701,14 +2793,33 @@ function mitFields() {
 function openRunForm(preset) {
   const fixed = !!preset.caseId;
   const tc = fixed ? Store.get("cases", preset.caseId) : null;
-  Modal.open(fixed ? `Record Run — ${tc.code}` : "Record Test Run", runFields(fixed), preset, v => {
+  const trun = preset.testRunId ? Store.get("testRuns", preset.testRunId) : null;
+  const title = fixed ? `Record Run — ${tc.code}${trun ? ` in ${trun.code || "test run"}` : ""}` : "Record Test Run";
+  Modal.open(title, runFields(fixed), preset, v => {
     if (fixed) v.caseId = preset.caseId;
     if (preset.planId && !v.planId) v.planId = preset.planId;
+    if (preset.testRunId) v.testRunId = preset.testRunId;
     const run = Store.add("runs", v);
 
     Toast.show(`${run.code} recorded — ${v.result}`);
+    // Same route re-renders in place: filters and scroll survive, and the row comes back into view.
+    if (preset.anchor) App.anchor(preset.anchor);
     App.render();
   }, "Record");
+}
+
+/* A component's parent must live in the same system; otherwise it becomes top-level. */
+function placeComponent(v) {
+  const parent = v.parentComponentId ? Store.get("components", v.parentComponentId) : null;
+  if (!parent || parent.systemId !== v.systemId) v.parentComponentId = "";
+  return v;
+}
+
+/* A case owned by a component takes that component's system; blank component = system-level. */
+function placeCase(v) {
+  const comp = v.componentId ? Store.get("components", v.componentId) : null;
+  if (comp) v.systemId = comp.systemId;
+  return v;
 }
 
 function openDefectForm(preset) {

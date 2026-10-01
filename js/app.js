@@ -4,6 +4,11 @@
 
 const App = {
   bulkSel: new Set(),
+  _lastHash: null,
+  _anchor: null,
+
+  /* Bring an element (e.g. the test-run row just recorded) into view after the next render. */
+  anchor(id) { this._anchor = id; },
 
   go(hash) {
     if (location.hash === hash) this.render();
@@ -41,6 +46,7 @@ const App = {
         case "procedures":  html = seg[1] ? Views.procedureDetail(seg[1]) : Views.procedures(); break;
         case "plans":       html = seg[1] ? Views.planDetail(seg[1]) : Views.plans(); break;
         case "runs":        html = Views.runs(params); break;
+        case "testruns":    html = seg[1] ? Views.testRun(seg[1], params) : Views.runs(params); nav = "runs"; break;
         case "risks":       html = seg[1] ? Views.riskDetail(seg[1]) : Views.risks(params); break;
         case "resources":   html = seg[1] ? Views.resourceDetail(seg[1]) : Views.resources(); break;
         case "idsk":        html = Views.idsk(); break;
@@ -48,7 +54,7 @@ const App = {
           html = seg[1] ? (seg[2] === "report" ? Views.decisionReport(seg[1]) : Views.decisionDetail(seg[1])) : Views.idsk();
           nav = "idsk"; break;
         case "defects":     html = seg[1] ? Views.defectDetail(seg[1]) : Views.defects(params); break;
-        case "execute":     html = Views.execute(seg[1]); nav = "cases"; break;
+        case "execute":     html = Views.execute(seg[1], params); nav = params.get("tr") ? "runs" : "cases"; break;
         case "sitrep":      html = Views.sitrep(); nav = "dashboard"; break;
         case "documents":   html = Views.documents(params); break;
         case "schedule":    html = Views.schedule(params); break;
@@ -62,9 +68,18 @@ const App = {
       html = `<div class="empty" style="padding:60px">Something went wrong rendering this view.<br><span class="mono">${esc(err.message)}</span><br><br><a href="#/dashboard">Back to dashboard</a></div>`;
     }
 
+    // Re-rendering the same route (a save, a status click) keeps filters and scroll position;
+    // navigating to a new route starts at the top unless an anchor was requested.
+    const sameRoute = location.hash === this._lastHash;
+    const y = window.scrollY;
     view.innerHTML = html;
-    view.scrollTop = 0;
-    window.scrollTo(0, 0);
+    const target = this._anchor && document.getElementById(this._anchor);
+    this._anchor = null;
+    this._lastHash = location.hash;
+    if (target) {
+      target.scrollIntoView({ block: "center" });
+      target.classList.add("flash");
+    } else window.scrollTo(0, sameRoute ? y : 0);
 
     /* bulk selection: persists across re-renders of the cases list, clears elsewhere */
     if (seg[0] === "cases" && !seg[1]) {
