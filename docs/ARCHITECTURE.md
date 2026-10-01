@@ -36,7 +36,7 @@ flowchart TD
   Load --> Guard[guard.js: normalize and validate copy]
   Load --> Storage[(localStorage: active and recovery)]
   Boot --> Router[app.js: hash router and event delegation]
-  Router -->|Select view| Views[views.js: Views]
+  Router -->|Select view| Views[views.js core + pages/*.js: Views]
   Regression[regression.js: test runs and regression flows] -->|Adds Views and Actions at load| Views
   ScopeMod[scope.js: scope banner and ownership page] -->|Adds Views and Actions at load| Views
   Views -->|Scope.list filters lists by owning system| Store
@@ -45,7 +45,7 @@ flowchart TD
   Views --> UI[ui.js: HTML fragments and badges]
   Views --> DOM[View HTML in DOM]
   DOM -->|data-act / form events| Router
-  Router --> Actions[views.js: Actions and forms]
+  Router --> Actions[pages/*.js: Actions and forms]
   Actions --> Modal[ui.js: Modal and Toast]
   Modal -->|Submitted values| Actions
   Actions --> Commands[commands.js: UI boundary]

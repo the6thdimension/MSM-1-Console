@@ -58,7 +58,7 @@ Press <kbd>/</kbd> to jump to global search, <kbd>Ctrl</kbd>+<kbd>K</kbd> for th
 
 **Jira/Zephyr sync**: requirements, test cases, test plans, and runs carry an editable **Issue Key** (shown as a subtitle on case/plan pages and under run codes in tables); case and plan pages end with an **External Links** panel where you paste full Jira/Zephyr/share URLs for one-click jump-out; set your Jira base URL under Interchange → Sync Settings and every key becomes a link into Jira. Imports match by key first, so CSV round-trips update rather than duplicate. The dashboard's **⎙ Weekly SITREP** prints a program-wide status report; procedures have an inline step editor (add/edit/delete/drag-reorder).
 
-Working the tool day to day: **▶ Execute** on a case runs its procedure step-by-step and captures the run (a Fail offers a pre-filled defect); status badges in the case/defect tables are **click-to-cycle**; the cases list supports **bulk select** (assign to plan / set status); the Schedule page opens with a **campaign Gantt** (plan bars, event diamonds, today line); plan pages show an honest **pace projection**; requirement pages chart **measured-value history** against threshold/objective; and every major entity keeps an automatic **change log**.
+Working the tool day to day: **▶ Execute** on a case runs its procedure step-by-step and captures the run (a Fail offers a pre-filled defect); status badges in the case/defect tables are **click-to-cycle**; the cases list supports **bulk select** (assign to plan / set status); the Schedule page opens with a **Campaign Overview** (named plan bars, shaped and labeled events, multi-day spans, zoom); plan pages show an honest **pace projection**; requirement pages chart **measured-value history** against threshold/objective; and every major entity keeps an automatic **change log**.
 
 ## Files
 
@@ -67,7 +67,8 @@ Working the tool day to day: **▶ Execute** on a case runs its procedure step-b
 - `js/seed.js` — demo dataset (MSM-1 Mobile Sentry Module)
 - `js/store.js` — localStorage database + relations + rollups
 - `js/ui.js` — modal forms, toasts, shared fragments
-- `js/views.js` — page renderers + CRUD actions
+- `js/views.js` — shared view core: vocabularies, rendering helpers, the `Views` and `Actions` objects
+- `js/pages/*.js` — one file per page area (dashboard, systems, requirements, cases, procedures, plans, risks, documents, defects, decisions, schedule, resources, interchange): its pages, actions and form fields
 - `js/regression.js` — test run sessions, full regression, removal review
 - `js/guard.js`, `js/fence.js`, `js/commands.js` — validation, write fence, command boundary
 - `js/app.js` — hash router + event wiring

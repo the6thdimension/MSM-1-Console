@@ -66,7 +66,12 @@ const App = {
       }
     } catch (err) {
       console.error(err);
-      html = `<div class="empty" style="padding:60px">Something went wrong rendering this view.<br><span class="mono">${esc(err.message)}</span><br><br><a href="#/dashboard">Back to dashboard</a></div>`;
+      // A page renderer that never registered means a page script did not load: usually a release
+      // copied without its js/pages folder. Your data is untouched; say so instead of a raw TypeError.
+      const missing = /^Views\.\w+ is not a function$/.test(err.message);
+      html = missing
+        ? `<div class="empty" style="padding:60px"><b>This page's script did not load.</b><br>The application folder looks incomplete — copy the whole release, including <span class="mono">js/pages/</span>, then reload. Your saved data has not been changed.<br><span class="mono faint">${esc(err.message)}</span></div>`
+        : `<div class="empty" style="padding:60px">Something went wrong rendering this view.<br><span class="mono">${esc(err.message)}</span><br><br><a href="#/dashboard">Back to dashboard</a></div>`;
     }
 
     // Re-rendering the same route (a save, a status click) keeps filters and scroll position;

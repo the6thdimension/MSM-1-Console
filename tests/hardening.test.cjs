@@ -7,6 +7,8 @@ const crypto=require('node:crypto');
 const root=path.resolve(__dirname,'..');
 const KEY='msm1-te-db-v1';
 const fixture=()=>JSON.parse(fs.readFileSync(path.join(__dirname,'fixtures/current.json'),'utf8'));
+// The app's own script order, read from index.html so the harness loads exactly what ships.
+function scriptOrder(){return [...fs.readFileSync(path.join(root,'index.html'),'utf8').matchAll(/<script src="js\/([^"]+)\.js"><\/script>/g)].map(m=>m[1]);}
 function harness(memory=new Map(),fail=()=>false) {
   const writes=[];
   let queue=Promise.resolve();
@@ -16,7 +18,7 @@ function harness(memory=new Map(),fail=()=>false) {
     navigator:{locks:{request:(_key,fn)=>{const pending=queue.then(fn);queue=pending.catch(()=>{});return pending;}}},
     localStorage:{getItem(k){if(fail('get',k))throw Error('read denied');return memory.get(k)??null;},setItem(k,v){if(fail('set',k))throw Error('quota exceeded');memory.set(k,v);writes.push(k);},removeItem(k){memory.delete(k);}}
   });
-  for(const name of ['seed','guard','store','io','ui','views','regression','scope'])vm.runInContext(fs.readFileSync(path.join(root,'js',name+'.js'),'utf8'),ctx,{filename:name});
+  for(const name of scriptOrder().filter(n=>!['fence','commands','app'].includes(n)))vm.runInContext(fs.readFileSync(path.join(root,'js',name+'.js'),'utf8'),ctx,{filename:name});
   const api=vm.runInContext('({Store,DataGuard,IO,Views,Scope,safeHttp,externalLink})',ctx);
   return {...api,ctx,memory,writes,load:()=>api.Store.load()};
 }
@@ -377,6 +379,14 @@ test('component cards state the records that decided their status',async()=>{
   assert.match(h.Views.componentDetail(comp.id),new RegExp(d.code));
   await S.command('close',()=>S.update('defects',d.id,{status:'Closed',closed:'2026-10-01'}));
   assert.doesNotMatch(why(comp.id,false),/Synthetic|defect/,'closed defects drop out of the reason');
+});
+test('every page module is loaded by index.html after the views core and before the command boundary',()=>{
+  const order=scriptOrder(),pages=fs.readdirSync(path.join(root,'js/pages')).filter(f=>f.endsWith('.js')).map(f=>'pages/'+f.slice(0,-3));
+  assert.ok(pages.length>=10);
+  for(const p of pages){const i=order.indexOf(p);assert.ok(i>order.indexOf('views')&&i<order.indexOf('commands'),`${p} loads between views and commands`);}
+  assert.equal(new Set(order).size,order.length,'no script loaded twice');
+  const h=harness();
+  for(const a of ['add-requirement','add-event','add-extlink','bulk-status','add-doc-link','del-risk','add-defect-case'])assert.equal(vm.runInContext(`typeof Actions[${JSON.stringify(a)}]`,h.ctx),'function',`${a} is registered`);
 });
 test('runtime shell has no remote assets and disallows background connections',()=>{
   const html=fs.readFileSync(path.join(root,'index.html'),'utf8');assert.doesNotMatch(html,/(?:src|href)="https?:/);assert.match(html,/connect-src 'none'/);

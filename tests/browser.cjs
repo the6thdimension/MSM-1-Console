@@ -111,6 +111,15 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
     assert.ok(Math.abs(lane.x-ov.x)<1&&Math.abs(lane.width-ov.width)<1,'today line and gridlines share the lane coordinates');
     console.log('PASS campaign overview zoom, labels and spans');
 
+    // A page module that failed to load explains the incomplete install instead of a raw TypeError.
+    const savedDb=await page.evaluate(()=>localStorage.getItem('msm1-te-db-v1'));
+    await page.evaluate(()=>{window.__idsk=Views.idsk;delete Views.idsk;App.go('#/idsk');});
+    await page.locator('#view',{hasText:'did not load'}).waitFor();
+    assert.match(await page.locator('#view').textContent(),/js\/pages\//);
+    assert.equal(await page.evaluate(()=>localStorage.getItem('msm1-te-db-v1')),savedDb,'data untouched');
+    await page.evaluate(()=>{Views.idsk=window.__idsk;App.go('#/dashboard');});
+    console.log('PASS missing page module reports an incomplete install');
+
     await page.evaluate(()=>App.go('#/requirements'));
     await page.locator('#scope-select').selectOption('sys-3');
     await page.locator('.scope-banner').waitFor();

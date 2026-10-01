@@ -28,6 +28,8 @@ compliance claims made by this handbook.
 
 Open `index.html` in a browser. There is no package installation, build pipeline,
 framework runtime, or application server. The HTML loads local scripts in order.
+A release is the whole folder (including `js/pages/`); copy it complete rather than
+replacing individual files.
 The app retains one active program in browser localStorage. A hash URL identifies
 a view and sometimes an entity; it does not transfer the underlying database.
 
@@ -72,13 +74,18 @@ a test run brings its row back into view. Navigating to a new page starts at the
 | `js/store.js` | `Store`: persistence, migrations, IDs, CRUD, relationships, derived status, search, audit, undo, snapshots |
 | `js/io.js` | `IO`: CSV parser/writer, Jira and Zephyr conversions, browser file downloads |
 | `js/ui.js` | Escaping, links, badges, page fragments, schema-driven forms, confirmations, toasts, command palette |
-| `js/views.js` | `Views`, `Actions`, field definitions, execution flow, reports, charts, document management |
+| `js/views.js` | Views core: shared vocabularies, rendering helpers (badges, run dots, pace strip, charts, external-links panel), the `Views` and `Actions` objects, shared actions, owner fields |
+| `js/pages/*.js` | One file per page area — `dashboard`, `systems`, `requirements`, `cases`, `procedures`, `plans`, `risks`, `documents`, `defects`, `decisions`, `schedule`, `resources`, `interchange` — each holding that area's page renderers, its actions (added with `Object.assign(Actions, …)`) and its form field definitions |
 | `js/regression.js` | Test run sessions page, full-system regression, plan Auto-Fill / Start Run, review-for-removal dispositions |
 | `js/scope.js` | Scope banner, ownership page (assign program-level records to systems, reviewed suggestions) |
 | `js/app.js` | `App`: startup, hash routing, HTML replacement, scroll/anchor preservation, delegated events, file reads, bulk-selection state |
 
 Scripts are classic scripts sharing global bindings, not ES modules. Load order:
-seed → guard → fence → store → IO → UI → views → regression → scope → commands → app.
+seed → guard → fence → store → IO → UI → views → pages/* → regression → scope → commands → app.
+Page files only define functions and register them, so their order among themselves
+does not matter at load; `index.html` is the single source of the order and the core
+test harness reads it from there. A page whose script is missing renders an
+"incomplete install" message naming `js/pages/` instead of failing silently.
 `regression.js` and `scope.js` add to `Views` and `Actions` before `commands.js`
 wraps every action in the command boundary; they do not override or patch
 existing functions. The `Scope` object itself lives in `ui.js`. `App.boot()` loads/migrates data, attempts a
