@@ -387,7 +387,7 @@ Views.systems = function () {
     const sysSt = Store.systemStatus(s.id);
     const pills = Store.componentTree(s.id).map(({ comp: c, depth }) => {
       const st = Store.componentStatus(c.id);
-      return `<span class="comp-pill st-${COMP_ST_SLUG[st]}${depth ? " sub" : ""}" title="${esc(c.code)} ${esc(c.name)} — ${st}${depth ? ` · subcomponent level ${depth}` : ""}">${depth ? "↳ " : ""}${esc(c.name)}</span>`;
+      return `<span class="comp-pill st-${COMP_ST_SLUG[st]}${depth ? " sub" : ""}" title="${esc(c.code)} ${esc(c.name)} — ${componentWhy(c.id, false)}${depth ? ` · subcomponent level ${depth}` : ""}">${depth ? "↳ " : ""}${esc(c.name)}</span>`;
     }).join("");
     return `<a class="sys-card" href="#/systems/${s.id}">
       <span class="sys-lamp st-${COMP_ST_SLUG[sysSt]}" title="System status: ${sysSt}"></span>
@@ -478,7 +478,7 @@ Views.componentDetail = function (id) {
       `<span class="code-inline">${esc(c.code)}</span>${esc(c.name)}`,
       actBtn("Edit", "edit-component", c.id) + actBtn("Delete", "del-component", c.id) + actBtn("+ Subcomponent", "add-subcomponent", c.id) + actBtn("+ Test Case", "add-case", c.id) +
       actBtn("▶ Component Test", "comp-test", c.id, "", false),
-      `${badge(st)} ${badge(depth ? `Subcomponent · level ${depth}` : "Top-level component", depth ? "b-purple" : "b-blue")} &nbsp; ${esc(c.description)}`)}
+      `${badge(st)} ${badge(depth ? `Subcomponent · level ${depth}` : "Top-level component", depth ? "b-purple" : "b-blue")} &nbsp; ${esc(c.description)}${componentWhy(c.id)}`)}
     ${componentTestPanel(c)}
     <div class="grid-2">
       <div>
@@ -499,6 +499,34 @@ Views.componentDetail = function (id) {
     </div>`;
 };
 
+/* Why a component has its status, from Store.componentStatusDetail. `html` false gives plain
+   text for tooltips. Lists stop at three codes and say how many more. */
+function componentWhy(compId, html = true) {
+  const d = Store.componentStatusDetail(compId);
+  const list = (recs, coll = "cases") => {
+    const shown = recs.slice(0, 3).map(r => html ? codeLink(coll, r) : esc(r.code)).join(", ");
+    return shown + (recs.length > 3 ? ` +${recs.length - 3} more` : "");
+  };
+  const parts = [];
+  if (d.status === "Failing") {
+    if (d.failed.length) parts.push(`latest run failed: ${list(d.failed)}`);
+    for (const sev of ["Critical", "Major"]) {
+      const defs = d.blocking.filter(x => x.severity === sev);
+      if (defs.length) parts.push(`open ${sev} defect${defs.length === 1 ? "" : "s"}: ${list(defs, "defects")}`);
+    }
+  } else if (d.status === "Passing") {
+    parts.push(`${d.cases === 1 ? "its only case is" : `all ${d.cases} cases are`} settled (latest Pass, Waived or Review for Removal)`);
+  } else if (d.status === "In Test") {
+    parts.push(`${d.settled} of ${d.cases} settled`);
+    if (d.unrun.length) parts.push(`not run: ${list(d.unrun)}`);
+    if (d.open.length) parts.push(`in progress or blocked: ${list(d.open)}`);
+  } else {
+    parts.push(d.cases ? `none of ${d.cases} case${d.cases === 1 ? "" : "s"} run yet` : "no test cases");
+  }
+  const text = parts.join(" · ");
+  return html ? `<div class="why st-${COMP_ST_SLUG[d.status]}" title="Why this component reads ${d.status}">${text}</div>` : `${d.status} — ${text}`;
+}
+
 /* One component's card on the cases page. `comp` null = the system-level card for `sys`.
    Subcomponent cards are indented and styled differently from top-level ones. */
 function caseCard(comp, depth, direct, inSubtree, row, head, sys) {
@@ -514,7 +542,8 @@ function caseCard(comp, depth, direct, inSubtree, row, head, sys) {
   return `<div class="case-card ${comp ? (depth ? "sub" : "top") : "syslevel"}" style="--depth:${depth}">
     <div class="case-card-head">
       <div class="cc-title">${title}
-        ${badge(kind, comp ? (depth ? "b-purple" : "b-blue") : "b-grey")} ${comp ? badge(Store.componentStatus(comp.id)) : ""}</div>
+        ${badge(kind, comp ? (depth ? "b-purple" : "b-blue") : "b-grey")} ${comp ? badge(Store.componentStatus(comp.id)) : ""}
+        ${comp ? componentWhy(comp.id) : ""}</div>
       <div class="cc-meta">
         <span class="mono small">${direct.length} case${direct.length === 1 ? "" : "s"}${nested ? ` <span class="faint">· +${nested} in subcomponents</span>` : ""}</span>
         ${direct.length ? `<div class="cc-meter">${progressMeter(counts)}</div>` : ""}
@@ -1913,46 +1942,7 @@ Views.schedule = function (params) {
   }
   if (!todayPlaced && events.length) html += `<div class="today-marker">Today · ${esc(today)}</div>`;
 
-  /* --- campaign overview gantt --- */
-  const allEvents = Scope.list("events");
-  const plansG = Scope.list("plans");
-  const dates = [
-    ...plansG.flatMap(p => [p.start, p.end]),
-    ...allEvents.flatMap(ev => [ev.start, ev.end]),
-    today
-  ].filter(Boolean).sort();
-  let gantt = "";
-  if (dates.length >= 2) {
-    const t0 = new Date(dates[0]).getTime(), t1 = new Date(dates[dates.length - 1]).getTime();
-    const span = (t1 - t0) || 1;
-    const pad = span * 0.03;
-    const lo = t0 - pad, range = span + pad * 2;
-    const pct = iso => (((new Date(iso).getTime()) - lo) / range * 100).toFixed(2);
-    const markCls = ev => ev.status === "Complete" ? "gm-complete" : ev.type === "Decision Point" ? "gm-decision" : ev.type === "Milestone" ? "gm-milestone" : "";
-    const barCls = p => p.status === "Active" ? "gb-active" : p.status === "Planning" ? "gb-planning" : p.status === "Complete" ? "gb-complete" : "gb-other";
-    const rows = plansG.map(p => {
-      const bar = p.start ? `<a class="gantt-bar ${barCls(p)}" href="#/plans/${p.id}" style="left:${pct(p.start)}%;width:${Math.max(((new Date(p.end || p.start) - new Date(p.start)) / range) * 100, 1).toFixed(2)}%" title="${esc(p.code)} ${esc(p.name)} · ${esc(p.start)} → ${esc(p.end || "")}">${esc(p.code)}</a>` : "";
-      const marks = allEvents.filter(ev => ev.planId === p.id && ev.start).map(ev =>
-        `<a class="gantt-mark ${markCls(ev)}" href="#/events/${ev.id}" style="left:${pct(ev.start)}%" title="${esc(ev.code)} ${esc(ev.title)} · ${esc(ev.start)}"></a>`).join("");
-      return `<div class="gantt-row"><div class="gantt-label">${esc(p.code)}</div><div class="gantt-lane">${bar}${marks}</div></div>`;
-    }).join("");
-    const looseMarks = allEvents.filter(ev => !ev.planId && ev.start).map(ev =>
-      `<a class="gantt-mark ${markCls(ev)}" href="#/events/${ev.id}" style="left:${pct(ev.start)}%" title="${esc(ev.code)} ${esc(ev.title)} · ${esc(ev.start)}"></a>`).join("");
-    const months = [];
-    const cur = new Date(lo); cur.setDate(1);
-    while (cur.getTime() < lo + range) {
-      const iso = cur.toISOString().slice(0, 10);
-      if (new Date(iso).getTime() >= lo) months.push(`<span style="left:${pct(iso)}%">${cur.toLocaleDateString(undefined, { month: "short" })}</span>`);
-      cur.setMonth(cur.getMonth() + 1);
-    }
-    gantt = panel("Campaign Overview", `<div class="gantt">
-        ${rows}
-        <div class="gantt-row"><div class="gantt-label">Program</div><div class="gantt-lane">${looseMarks}</div></div>
-        <div class="gantt-today" style="left:calc(128px + (100% - 136px) * ${(((new Date(today).getTime()) - lo) / range).toFixed(4)})" title="Today ${esc(today)}"></div>
-        <div class="gantt-axis">${months.join("")}</div>
-      </div>
-      <div class="faint mono small" style="padding:0 4px 6px">◆ event &nbsp; <span style="color:var(--red)">◆</span> decision point &nbsp; <span style="color:var(--amber)">◆</span> milestone &nbsp; <span style="color:var(--green)">◆</span> complete &nbsp; | today</div>`);
-  }
+  const gantt = campaignGantt(params);
 
   return `
     ${pageHead([{ label: "Schedule" }], "Program Schedule",
@@ -1966,6 +1956,148 @@ Views.schedule = function (params) {
     </div>
     ${html || emptyMsg("No events match the filter — add the first one.")}`;
 };
+
+/* ---------- campaign overview ----------
+   Every position on the chart comes from ganttScale: whole UTC days mapped onto 0–100% of the
+   track. Lanes, gridlines, the today line and the axis all share that one mapping, and the
+   label column width lives only in CSS (--gl). */
+const GANTT_DAY = 86400000;
+const GANTT_ZOOMS = [
+  { key: "program", label: "Whole program" },
+  { key: "90", label: "±90 days" },
+  { key: "quarter", label: "This quarter" }
+];
+const ganttDay = iso => Date.parse(String(iso).slice(0, 10) + "T00:00:00Z");
+const ganttISO = ms => new Date(ms).toISOString().slice(0, 10);
+
+function ganttScale(loISO, hiISO) {
+  const lo = ganttDay(loISO), hi = ganttDay(hiISO) + GANTT_DAY;   // the last day is included
+  const range = Math.max(hi - lo, GANTT_DAY);
+  const ticks = [];
+  const first = new Date(lo);
+  for (let y = first.getUTCFullYear(), m = first.getUTCMonth() + (first.getUTCDate() === 1 ? 0 : 1); ; m++) {
+    const t = Date.UTC(y, m, 1);
+    if (t >= hi) break;
+    ticks.push(ganttISO(t));
+  }
+  return {
+    lo: loISO, hi: hiISO, ticks,
+    x: iso => (ganttDay(iso) - lo) / range * 100,                  // start of that day
+    xEnd: iso => (ganttDay(iso) + GANTT_DAY - lo) / range * 100,    // end of that day
+    inView: (start, end) => ganttDay(end || start) >= lo && ganttDay(start) < hi
+  };
+}
+
+/* The visible window for a zoom level. "program" spans every dated plan and event plus today. */
+function ganttWindow(zoom, dates, today) {
+  const shift = (iso, days) => ganttISO(ganttDay(iso) + days * GANTT_DAY);
+  if (zoom === "90") return [shift(today, -90), shift(today, 90)];
+  if (zoom === "quarter") {
+    const y = Number(today.slice(0, 4)), q = Math.floor((Number(today.slice(5, 7)) - 1) / 3);
+    return [ganttISO(Date.UTC(y, q * 3, 1)), ganttISO(Date.UTC(y, q * 3 + 3, 0))];
+  }
+  const all = dates.concat(today).filter(Boolean).sort();
+  const span = Math.round((ganttDay(all[all.length - 1]) - ganttDay(all[0])) / GANTT_DAY);
+  const pad = Math.max(2, Math.round(span * 0.03));
+  return [shift(all[0], -pad), shift(all[all.length - 1], pad)];
+}
+
+function campaignGantt(params) {
+  const today = todayISO();
+  const zoom = GANTT_ZOOMS.some(z => z.key === params.get("zoom")) ? params.get("zoom") : "program";
+  const events = Scope.list("events").filter(ev => ev.start);
+  const plans = Scope.list("plans").slice().sort((a, b) => (a.start || "9999").localeCompare(b.start || "9999") || Store.byCodeOrder(a, b));
+  const dates = plans.flatMap(p => [p.start, p.end]).concat(events.flatMap(ev => [ev.start, ev.end])).filter(Boolean);
+  if (!dates.length) return "";
+  const g = ganttScale(...ganttWindow(zoom, dates, today));
+  const clamp = v => Math.min(100, Math.max(0, v));
+  const fx = v => v.toFixed(2);
+  let outside = 0;
+
+  const kind = ev => ev.type === "Decision Point" ? "gk-decision" : ev.type === "Milestone" ? "gk-milestone" : "gk-event";
+  const state = s => s === "Complete" ? " done" : s === "Cancelled" ? " cancelled" : "";
+  const lane = list => {
+    const out = [];
+    let lastTag = -Infinity, low = false;
+    for (const ev of list.slice().sort((a, b) => a.start.localeCompare(b.start))) {
+      if (!g.inView(ev.start, ev.end)) { outside++; continue; }
+      const k = kind(ev);
+      const tip = esc(`${ev.code} ${ev.title} · ${ev.type} · ${ev.status} · ${ev.start}${ev.end && ev.end !== ev.start ? " → " + ev.end : ""}`);
+      if (k === "gk-event" && ev.end && ev.end > ev.start) {
+        const l = clamp(g.x(ev.start)), r = clamp(g.xEnd(ev.end));
+        out.push(`<a class="gantt-span${state(ev.status)}" href="#/events/${ev.id}" style="left:${fx(l)}%;width:${fx(Math.max(r - l, 0.4))}%" title="${tip}" aria-label="${tip}"></a>`);
+        continue;
+      }
+      const px = clamp(g.x(ev.start) + (g.xEnd(ev.start) - g.x(ev.start)) / 2);
+      let tag = "";
+      if (k !== "gk-event") {
+        // Decisions and milestones are labeled on the chart; close neighbours alternate above/below.
+        const dec = ev.decisionId ? Store.get("decisions", ev.decisionId) : null;
+        low = px - lastTag < 9 ? !low : false;
+        lastTag = px;
+        tag = `<span class="gantt-tag ${low ? "low" : "high"}${px > 86 ? " flip" : ""}${k === "gk-decision" ? " dec" : ""}">${esc(k === "gk-decision" && dec ? dec.code : ev.code)}</span>`;
+      }
+      out.push(`<a class="gantt-pt" href="#/events/${ev.id}" style="left:${fx(px)}%" title="${tip}" aria-label="${tip}"><i class="gantt-glyph ${k}${state(ev.status)}"></i>${tag}</a>`);
+    }
+    return out.join("");
+  };
+  const barCls = p => p.status === "Active" ? "gb-active" : p.status === "Planning" ? "gb-planning" : p.status === "Complete" ? "gb-complete" : "gb-other";
+  const bar = p => {
+    if (!p.start) return "";
+    const end = p.end && p.end >= p.start ? p.end : p.start;
+    if (!g.inView(p.start, end)) { outside++; return ""; }
+    const l0 = g.x(p.start), r0 = g.xEnd(end), l = clamp(l0), r = clamp(r0);
+    const cut = (l0 < 0 ? " cut-l" : "") + (r0 > 100 ? " cut-r" : "");
+    return `<a class="gantt-bar ${barCls(p)}${cut}" href="#/plans/${p.id}" style="left:${fx(l)}%;width:${fx(Math.max(r - l, 0.6))}%" title="${esc(`${p.code} ${p.name} · ${p.status} · ${p.start} → ${p.end || "no end date"}`)}">${esc(p.code)} · ${esc(p.name)}</a>`;
+  };
+  const row = (label, sub, href, body) => `<div class="gantt-row">
+      <div class="gantt-label">${href ? `<a class="gl-name" href="${href}">${label}</a>` : `<span class="gl-name">${label}</span>`}${sub ? `<span class="gl-sub">${sub}</span>` : ""}</div>
+      <div class="gantt-lane">${body}</div>
+    </div>`;
+
+  const rows = plans.map(p => row(
+    `<span class="code">${esc(p.code)}</span> <span class="gl-title">${esc(p.name)}</span>`,
+    `${esc(p.status || "")}${p.start ? "" : " · no dates"}`,
+    `#/plans/${p.id}`,
+    bar(p) + lane(events.filter(ev => ev.planId === p.id)))).join("");
+  const loose = events.filter(ev => !ev.planId || !plans.some(p => p.id === ev.planId));
+  const programRow = loose.length ? row(`<span class="code">Program</span>`, "no plan", "", lane(loose)) : "";
+
+  const todayIn = g.inView(today);
+  const tickLabel = (iso, i) => new Date(ganttDay(iso)).toLocaleDateString(undefined,
+    { month: "short", timeZone: "UTC", ...(i === 0 || iso.slice(5, 7) === "01" ? { year: "numeric" } : {}) });
+  const overlay = g.ticks.map(t => `<i class="gantt-grid" style="left:${fx(g.x(t))}%"></i>`).join("") +
+    (todayIn ? `<i class="gantt-now" style="left:${fx(g.x(today) + (g.xEnd(today) - g.x(today)) / 2)}%" title="Today ${esc(today)}"></i>` : "");
+  const axis = g.ticks.map((t, i) => `<span style="left:${fx(g.x(t))}%">${esc(tickLabel(t, i))}</span>`).join("");
+
+  const zoomLinks = GANTT_ZOOMS.map(z => {
+    const q = new URLSearchParams(params);
+    z.key === "program" ? q.delete("zoom") : q.set("zoom", z.key);
+    const qs = q.toString();
+    return `<a class="${z.key === zoom ? "active" : ""}" href="#/schedule${qs ? "?" + qs : ""}">${z.label}</a>`;
+  }).join("");
+  const head = `<div class="gantt-zoom">${zoomLinks}<span class="gantt-window">${esc(g.lo)} → ${esc(g.hi)}${todayIn ? "" : " · today is outside this window"}${outside ? ` · ${outside} item${outside === 1 ? "" : "s"} outside` : ""}</span></div>`;
+
+  const legend = `<div class="gantt-legend">
+      <span><i class="gantt-glyph gk-event"></i> event</span>
+      <span><i class="gantt-span-key"></i> multi-day window</span>
+      <span><i class="gantt-glyph gk-milestone"></i> milestone</span>
+      <span><i class="gantt-glyph gk-decision"></i> decision point</span>
+      <span><i class="gantt-glyph gk-event done"></i> complete (filled green)</span>
+      <span><i class="gantt-glyph gk-event cancelled"></i> cancelled (faded)</span>
+      <span><i class="gantt-now-key"></i> today</span>
+      <span>bar = plan window; color = plan status (named on the left)</span>
+      <span>dashed bar edge = continues outside the window</span>
+    </div>`;
+
+  return panel("Campaign Overview", `<div class="gantt">
+      <div class="gantt-rows">
+        ${rows}${programRow}
+        <div class="gantt-overlay" aria-hidden="true">${overlay}</div>
+      </div>
+      <div class="gantt-axis">${axis}</div>
+    </div>${legend}`, head);
+}
 
 Views.eventDetail = function (id) {
   const ev = Store.get("events", id);

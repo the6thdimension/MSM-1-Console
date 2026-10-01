@@ -150,7 +150,7 @@ Compatibility must retain both forms and validate counters against actual record
 | `#/risks` | 5×5 matrix, current/initial/residual risk information and mitigation workflow |
 | `#/resources` | Model/simulation/rig/referent register and VV&A tracks, intended use and caveats |
 | `#/idsk`, `#/decisions/:id` | Decisions, informing requirements and plans, evidence readiness |
-| `#/schedule`, `#/events/:id` | Campaign Gantt, event dates/status/location and dated notes |
+| `#/schedule?zoom=`, `#/events/:id` | Campaign Overview: one row per plan (name and status at left, labeled bar for its window) plus a Program row for events not tied to a plan. Shape encodes event type (● event, ▲ milestone, ◆ decision point), a thin bar marks a multi-day event, green fill = complete, faded = cancelled; milestones and decision points carry visible labels. Zoom: whole program (default), ±90 days around today, or this calendar quarter; bars cut by the window get a dashed edge and items outside are counted. All positions come from one UTC-day scale (`ganttScale`). Below: event timeline with dates/status/location and dated notes |
 | `#/documents` | External references and embedded files, related-code links |
 | `#/interchange` | CSV conversions, full JSON transfer, Jira URL setting, blank program (always whole-program, regardless of scope) |
 | `#/ownership` | Ownership overview per system; program-level records with reviewed owner suggestions; assign selected or accept suggestions |
@@ -170,7 +170,10 @@ Compatibility must retain both forms and validate counters against actual record
   defect → Failing; every case's latest result is Pass, Waived or Review for
   Removal → Passing (health, not verification); any run → In Test; otherwise
   Untested. Subcomponents are separate components; a parent's status covers only
-  its own cases. System health propagates failures and only reads Passing when
+  its own cases. `Store.componentStatusDetail` returns the status with the records
+  that decided it (failed cases, blocking defects, unrun or unsettled cases); case
+  cards and component pages print that reason line and system-card pills show it
+  as a tooltip, so the label and its explanation come from one rule. System health propagates failures and only reads Passing when
   every component passes.
 - Regression scope for a system: every non-Retired case owned by any of its
   components (all subcomponent depths) plus its system-level cases. Full

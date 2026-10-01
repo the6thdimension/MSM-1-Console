@@ -338,6 +338,46 @@ test('defects carry optional external links without defaulting existing records'
   const bad2=copy(S.db);bad2.defects[0].extLinks='https://x';
   assert.throws(()=>h.DataGuard.validate(bad2),/expected an array/);
 });
+test('campaign overview: one UTC day scale, zoom windows, ranged spans and labeled decisions',async()=>{
+  const h=await ready(),S=h.Store,run=src=>vm.runInContext(src,h.ctx);
+  const g=run('ganttScale("2026-07-31","2026-11-28")');
+  assert.equal(g.x('2026-07-31'),0);assert.equal(g.xEnd('2026-11-28'),100);
+  assert.deepEqual(copy(g.ticks),['2026-08-01','2026-09-01','2026-10-01','2026-11-01'],'ticks are UTC month starts inside the window');
+  assert.ok(g.inView('2026-07-01','2026-08-02'),'a span crossing the window edge is in view');assert.ok(!g.inView('2026-12-01'));
+  assert.deepEqual(copy(run('ganttWindow("90",[],"2026-10-01")')),['2026-07-03','2026-12-30']);
+  assert.deepEqual(copy(run('ganttWindow("quarter",[],"2026-11-15")')),['2026-10-01','2026-12-31']);
+  assert.deepEqual(copy(run('ganttWindow("quarter",[],"2027-02-28")')),['2027-01-01','2027-03-31']);
+  const w=run('ganttScale(...ganttWindow("90",[],"2026-10-01"))');
+  assert.equal(w.x('2026-10-01')+(w.xEnd('2026-10-01')-w.x('2026-10-01'))/2,50,'today is centered in the ±90 day window');
+  await S.command('events',()=>{
+    S.add('events',{title:'Synthetic range window',description:'',type:'Range Window',status:'Planned',start:'2026-10-05',end:'2026-10-09',location:'',planId:'',decisionId:'',notes:[]});
+    S.add('events',{title:'Synthetic decision',description:'',type:'Decision Point',status:'Planned',start:'2026-10-20',end:'',location:'',planId:'',decisionId:'',notes:[]});
+  });
+  const html=h.Views.schedule(new URLSearchParams());
+  assert.match(html,/class="gantt-span[^"]*"[^>]*Synthetic range window/,'multi-day event drawn as a span');
+  assert.match(html,/gantt-glyph gk-decision/);assert.match(html,/gantt-tag [^"]*dec[^"]*">EVT-/,'decision points carry a visible label');
+  assert.doesNotMatch(html,/calc\(128px/,'no label width duplicated in markup');
+  const out=h.Views.schedule(new URLSearchParams('zoom=quarter'));
+  assert.match(out,/class="active" href="#\/schedule\?zoom=quarter"/);
+  for(const m of out.matchAll(/style="left:(-?[\d.]+)%(?:;width:([\d.]+)%)?"/g)){const l=+m[1],wd=+(m[2]||0);assert.ok(l>=0&&l+wd<=100.01,`position ${l}+${wd} stays inside the track`);}
+});
+test('component cards state the records that decided their status',async()=>{
+  const h=await ready(),S=h.Store,why=(id,html)=>vm.runInContext(`componentWhy(${JSON.stringify(id)},${html})`,h.ctx);
+  for(const c of S.all('components'))assert.equal(S.componentStatusDetail(c.id).status,S.componentStatus(c.id),'one rule for status and reasons');
+  const failing=S.all('components').find(c=>S.componentStatusDetail(c.id).failed.length);
+  if(failing)assert.match(why(failing.id,false),/^Failing — latest run failed: /);
+  // A blocking defect on a component whose cases pass is named as the reason.
+  const comp=S.all('components').find(c=>S.componentStatus(c.id)!=='Failing');
+  await S.command('defect',()=>S.add('defects',{title:'Synthetic blocker',description:'',severity:'Critical',status:'Open',componentId:comp.id,caseIds:[],runId:'',owner:'',opened:'2026-10-01',closed:''}));
+  const d=S.all('defects').find(x=>x.title==='Synthetic blocker');
+  assert.equal(S.componentStatus(comp.id),'Failing');
+  assert.match(why(comp.id,false),new RegExp(`open Critical defect: ${d.code}`));
+  assert.match(why(comp.id,true),new RegExp(`class="why st-failing"[^]*href="#/defects/${d.id}"`),'reason links to the defect');
+  assert.match(h.Views.cases(new URLSearchParams()),/class="why st-/);
+  assert.match(h.Views.componentDetail(comp.id),new RegExp(d.code));
+  await S.command('close',()=>S.update('defects',d.id,{status:'Closed',closed:'2026-10-01'}));
+  assert.doesNotMatch(why(comp.id,false),/Synthetic|defect/,'closed defects drop out of the reason');
+});
 test('runtime shell has no remote assets and disallows background connections',()=>{
   const html=fs.readFileSync(path.join(root,'index.html'),'utf8');assert.doesNotMatch(html,/(?:src|href)="https?:/);assert.match(html,/connect-src 'none'/);
   assert.doesNotMatch(fs.readFileSync(path.join(root,'js/views.js'),'utf8'),/fetch\(/);

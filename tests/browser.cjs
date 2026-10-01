@@ -101,6 +101,16 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
     await page.waitForFunction(()=>!(Store.get('defects','def-1').extLinks||[]).length);
     console.log('PASS defect external links add and remove');
 
+    await page.evaluate(()=>App.go('#/schedule'));
+    assert.ok(await page.locator('.gantt-tag.dec').count()>=1,'decision points are labeled on the chart');
+    assert.ok(await page.locator('.gantt-span').count()>=1,'multi-day events drawn as spans');
+    await page.locator('.gantt-zoom a',{hasText:'This quarter'}).click();
+    await page.waitForFunction(()=>document.querySelector('.gantt-zoom a.active')?.textContent==='This quarter');
+    assert.match(await page.locator('.gantt-window').textContent(),/outside/,'items beyond the quarter are counted, not silently dropped');
+    const lane=await page.locator('.gantt-lane').first().boundingBox(),ov=await page.locator('.gantt-overlay').boundingBox();
+    assert.ok(Math.abs(lane.x-ov.x)<1&&Math.abs(lane.width-ov.width)<1,'today line and gridlines share the lane coordinates');
+    console.log('PASS campaign overview zoom, labels and spans');
+
     await page.evaluate(()=>App.go('#/requirements'));
     await page.locator('#scope-select').selectOption('sys-3');
     await page.locator('.scope-banner').waitFor();

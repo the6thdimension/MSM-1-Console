@@ -547,20 +547,27 @@ const Store = {
   defectsOfComponent(compId) { return this.all("defects").filter(d => d.componentId === compId); },
   defectsOfCase(caseId) { return this.all("defects").filter(d => (d.caseIds || []).includes(caseId)); },
 
-  /* Derived component test status: Failing | In Test | Passing | Untested.
-     Open Critical/Major defects count as Failing. */
-  componentStatus(compId) {
-    const openBad = this.defectsOfComponent(compId).some(d =>
+  /* Derived component test status: Failing | In Test | Passing | Untested, with the records that
+     decided it. Open Critical/Major defects count as Failing. Retired cases are ignored.
+     Reasons are ordered: failing cases, blocking defects, then unsettled or unrun cases. */
+  componentStatusDetail(compId) {
+    const blocking = this.defectsOfComponent(compId).filter(d =>
       this.defectIsOpen(d) && (d.severity === "Critical" || d.severity === "Major"));
     const cases = this.casesOf(compId).filter(tc => tc.status !== "Retired");
-    const runs = cases.map(tc => this.latestRun(tc.id));
-    const anyFail = runs.some(r => r && r.result === "Fail");
-    if (anyFail || openBad) return "Failing";
+    const latest = cases.map(tc => ({ tc, run: this.latestRun(tc.id) }));
+    const failed = latest.filter(x => x.run && x.run.result === "Fail").map(x => x.tc);
     // Health, not verification: waived and removal-nominated cases are settled outcomes.
-    if (cases.length && runs.every(r => r && ["Pass", "Waived", "Review for Removal"].includes(r.result))) return "Passing";
-    if (runs.some(r => r)) return "In Test";
-    return "Untested";
+    const settled = x => x.run && ["Pass", "Waived", "Review for Removal"].includes(x.run.result);
+    const unrun = latest.filter(x => !x.run).map(x => x.tc);
+    const open = latest.filter(x => x.run && !settled(x)).map(x => x.tc);
+    let status;
+    if (failed.length || blocking.length) status = "Failing";
+    else if (cases.length && latest.every(settled)) status = "Passing";
+    else if (latest.some(x => x.run)) status = "In Test";
+    else status = "Untested";
+    return { status, cases: cases.length, failed, blocking, unrun, open, settled: latest.filter(settled).length };
   },
+  componentStatus(compId) { return this.componentStatusDetail(compId).status; },
 
   systemStatus(sysId) {
     const statuses = this.componentsOf(sysId).map(c => this.componentStatus(c.id));

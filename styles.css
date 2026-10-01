@@ -701,77 +701,120 @@ a.ev-ref { color: var(--blue); }
   a { color: inherit; text-decoration: none; }
   .report-only { display: block; }
 }
-/* ---------- gantt strip ---------- */
-.gantt { position: relative; padding: 8px 0 4px; }
-.gantt-row { position: relative; height: 30px; margin-bottom: 4px; }
+/* ---------- campaign overview (gantt) ----------
+   --gl is the label column; lanes, overlay and axis all start there. */
+.gantt { --gl: 190px; position: relative; padding: 6px 0 2px; }
+.gantt-rows { position: relative; }
+.gantt-row { position: relative; height: 42px; margin-bottom: 4px; }
 .gantt-label {
   position: absolute;
   left: 0; top: 0; bottom: 0;
-  width: 120px;
+  width: calc(var(--gl) - 12px);
   display: flex;
-  align-items: center;
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--ink-faint);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
   overflow: hidden;
-  white-space: nowrap;
 }
-.gantt-lane { position: absolute; left: 128px; right: 8px; top: 0; bottom: 0; background: var(--bg-0); border-radius: 3px; border: 1px solid var(--line-soft); }
+.gantt-label .gl-name { font-size: 12px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gantt-label a.gl-name:hover { color: var(--amber); text-decoration: none; }
+.gantt-label .gl-sub { font-family: var(--mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--ink-faint); white-space: nowrap; }
+.gantt-lane { position: absolute; left: var(--gl); right: 8px; top: 0; bottom: 0; background: var(--bg-0); border-radius: 3px; border: 1px solid var(--line-soft); }
+.gantt-overlay { position: absolute; left: var(--gl); right: 8px; top: 0; bottom: 0; pointer-events: none; z-index: 1; }
+.gantt-grid { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,.06); }
+.gantt-now { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--amber); opacity: .85; box-shadow: 0 0 8px var(--amber-glow); }
 .gantt-bar {
   position: absolute;
-  top: 5px; bottom: 5px;
+  top: 12px; height: 18px;
+  line-height: 18px;
   border-radius: 3px;
   font-family: var(--mono);
-  font-size: 9.5px;
+  font-size: 10px;
   color: #fff;
-  display: flex;
-  align-items: center;
   padding: 0 6px;
   overflow: hidden;
   white-space: nowrap;
+  text-overflow: ellipsis;
   text-shadow: 0 1px 2px rgba(0,0,0,.6);
-  min-width: 8px;
+  min-width: 6px;
+  z-index: 1;
 }
 .gantt-bar:hover { filter: brightness(1.2); text-decoration: none; }
 .gantt-bar.gb-active   { background: #7a6212; }
 .gantt-bar.gb-planning { background: #34506e; }
 .gantt-bar.gb-complete { background: #1f5c40; }
 .gantt-bar.gb-other    { background: #3a3f4a; }
-.gantt-mark {
-  position: absolute;
-  top: 50%;
-  transform: translate(-50%, -50%) rotate(45deg);
-  width: 9px; height: 9px;
-  border-radius: 2px;
+.gantt-bar.cut-l { border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: 2px dashed rgba(255,255,255,.55); }
+.gantt-bar.cut-r { border-top-right-radius: 0; border-bottom-right-radius: 0; border-right: 2px dashed rgba(255,255,255,.55); }
+.gantt-span { position: absolute; bottom: 3px; height: 5px; border-radius: 3px; background: var(--blue); opacity: .9; z-index: 2; }
+.gantt-span:hover { filter: brightness(1.3); }
+.gantt-span.done { background: var(--green); }
+.gantt-span.cancelled { opacity: .3; }
+.gantt-pt { position: absolute; top: 0; bottom: 0; width: 0; z-index: 3; }
+.gantt-pt:hover { text-decoration: none; }
+.gantt-pt:hover .gantt-glyph { filter: brightness(1.35); }
+.gantt-glyph {
+  display: inline-block;
+  vertical-align: middle;
+  width: 10px; height: 10px;
+  border-radius: 50%;
   background: var(--blue);
-  border: 1px solid rgba(255,255,255,.4);
+  box-shadow: 0 0 0 1px rgba(255,255,255,.45);
 }
-.gantt-mark:hover { transform: translate(-50%, -50%) rotate(45deg) scale(1.3); }
-.gantt-mark.gm-decision { background: var(--red); }
-.gantt-mark.gm-milestone { background: var(--amber); }
-.gantt-mark.gm-complete { background: var(--green); }
-.gantt-today {
+.gantt-glyph.gk-decision { border-radius: 1px; background: var(--red); transform: rotate(45deg); }
+.gantt-glyph.gk-milestone { width: 12px; height: 11px; border-radius: 0; background: var(--amber); box-shadow: none; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.gantt-glyph.done { background: var(--green); }
+.gantt-glyph.cancelled { opacity: .3; }
+.gantt-pt .gantt-glyph { position: absolute; top: 50%; left: 0; transform: translate(-50%, -50%); }
+.gantt-pt .gantt-glyph.gk-decision { transform: translate(-50%, -50%) rotate(45deg); }
+.gantt-tag {
   position: absolute;
-  top: 0; bottom: 14px;
-  width: 2px;
-  background: var(--amber);
-  opacity: .8;
-  z-index: 2;
-  box-shadow: 0 0 8px var(--amber-glow);
+  left: 7px;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  line-height: 11px;
+  color: var(--ink);
+  white-space: nowrap;
+  background: var(--bg-0);
+  padding: 0 3px;
+  border-radius: 2px;
 }
+.gantt-tag.high { top: 1px; }
+.gantt-tag.low { bottom: 1px; }
+.gantt-tag.flip { left: auto; right: 7px; }
+.gantt-tag.dec { color: var(--red); font-weight: 600; }
 .gantt-axis {
   position: relative;
   height: 16px;
-  margin-left: 128px;
+  margin-left: var(--gl);
   margin-right: 8px;
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: 9.5px;
   color: var(--ink-faint);
 }
-.gantt-axis span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
-
+.gantt-axis span { position: absolute; padding-left: 3px; white-space: nowrap; }
+.gantt-zoom { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.gantt-zoom a {
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--ink-dim);
+}
+.gantt-zoom a:hover { color: var(--amber); border-color: var(--amber-dim); text-decoration: none; }
+.gantt-zoom a.active { color: var(--bg-0); background: var(--amber); border-color: var(--amber); }
+.gantt-window { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); margin-left: 4px; }
+.gantt-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; padding: 6px 4px 8px; font-family: var(--mono); font-size: 10px; color: var(--ink-faint); }
+.gantt-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.gantt-span-key { display: inline-block; width: 18px; height: 5px; border-radius: 3px; background: var(--blue); }
+.gantt-now-key { display: inline-block; width: 2px; height: 12px; background: var(--amber); }
+@media (max-width: 900px) {
+  .gantt { --gl: 92px; }
+  .gantt-label .gl-title { display: none; }
+}
 /* ---------- execute mode ---------- */
 .exec-step { display: flex; gap: 12px; align-items: baseline; padding: 9px 10px; border-bottom: 1px solid var(--line-soft); cursor: pointer; }
 .exec-step:last-child { border-bottom: none; }
@@ -1498,6 +1541,12 @@ table.trace thead th.grp a { display: block; overflow: hidden; text-overflow: el
   border-bottom: 1px solid var(--line-soft);
 }
 .cc-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* Status reason line: the records that decided a component's status. */
+.why { flex-basis: 100%; font-size: 12px; color: var(--ink-dim); padding-left: 8px; border-left: 2px solid var(--line); margin-top: 2px; }
+.why.st-failing { border-left-color: var(--red); }
+.why.st-passing { border-left-color: var(--green); }
+.why.st-intest { border-left-color: var(--amber); }
+.page-sub .why, .page-head .why { margin-top: 8px; }
 .cc-name { font-weight: 600; font-size: 14.5px; color: var(--ink); }
 .case-card.sub .cc-name { font-size: 13.5px; }
 .cc-meta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
