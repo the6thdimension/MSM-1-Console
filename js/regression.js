@@ -48,14 +48,14 @@ function testRunsPanel(title, list, emptyText) {
       <td><a class="code" href="${testRunHref(t.id)}">${esc(t.code || t.id)}</a></td>
       <td><a href="${testRunHref(t.id)}">${esc(t.name || "Test run")}</a>${t.operator ? `<div class="faint small">${esc(t.operator)}</div>` : ""}</td>
       <td>${badge(t.status || "Active")}</td>
-      <td>${comp ? codeLink("components", comp) : sys ? codeLink("systems", sys) : `<span class="faint">—</span>`} ${plan ? codeLink("plans", plan) : ""}</td>
-      <td class="num">${runTimeLabel(t.startedAt || t.createdAt)}</td>
+      <td class="col-lo">${comp ? codeLink("components", comp) : sys ? codeLink("systems", sys) : `<span class="faint">—</span>`} ${plan ? codeLink("plans", plan) : ""}</td>
+      <td class="num col-mid">${runTimeLabel(t.startedAt || t.createdAt)}</td>
       <td class="num">${s.done}/${s.cases.length}</td>
       <td style="min-width:130px">${progressMeter(s.counts)}</td>
     </tr>`;
   }).join("");
   return panel(title, rows
-    ? `<div class="table-scroll"><table class="data"><thead><tr><th>Run</th><th>Name</th><th>Status</th><th>Scope</th><th>Started</th><th>Done</th><th>Progress</th></tr></thead><tbody>${rows}</tbody></table></div>`
+    ? `<div class="table-scroll"><table class="data"><thead><tr><th>Run</th><th>Name</th><th>Status</th><th class="col-lo">Scope</th><th class="col-mid">Started</th><th>Done</th><th>Progress</th></tr></thead><tbody>${rows}</tbody></table></div>`
     : emptyMsg(emptyText), "", true);
 }
 
@@ -202,10 +202,10 @@ Views.testRun = function (id, params = new URLSearchParams()) {
     return `<tr id="trc-${tc.id}" class="tr-row">
       <td><a class="code" href="#/cases/${tc.id}">${esc(tc.code)}</a>${tc.extKey ? `<div class="faint mono" style="font-size:9.5px">${esc(tc.extKey)}</div>` : ""}</td>
       <td><a href="#/cases/${tc.id}">${esc(tc.title)}</a>${tc.removalNominated ? ` ${badge("Review for Removal")}` : ""}${tc.status === "Retired" ? ` ${badge("Retired")}` : ""}</td>
-      <td>${proc ? codeLink("procedures", proc) : `<span class="faint small">—</span>`}</td>
-      <td>${r ? `${runBadge(r)}${r.operator ? `<div class="faint small">${esc(r.operator)}</div>` : ""}` : `<span class="faint small">Not run</span>`}</td>
-      <td>${delta(tc)}</td>
-      <td>${runDots(tc.id)}</td>
+      <td class="col-lo">${proc ? codeLink("procedures", proc) : `<span class="faint small">—</span>`}</td>
+      <td>${r ? `${runBadge(r)}<div class="faint small">${codeLink("runs", r)}${r.operator ? ` · ${esc(r.operator)}` : ""}</div>` : `<span class="faint small">Not run</span>`}</td>
+      <td class="col-mid">${delta(tc)}</td>
+      <td class="col-lo">${runDots(tc.id)}</td>
       <td class="inline-actions">${actBtn("● Record", "record-run-tr", tc.id, `data-tr="${t.id}"`, false, "btn-xs")}${proc ? `<a class="btn btn-ghost btn-xs" href="#/execute/${tc.id}?tr=${t.id}${sel ? `&comp=${encodeURIComponent(sel)}` : ""}">▶ Execute</a>` : ""}</td>
     </tr>`;
   };
@@ -220,7 +220,7 @@ Views.testRun = function (id, params = new URLSearchParams()) {
           <span class="faint mono small">${c.pass} pass · ${c.fail} fail${c.waived ? ` · ${c.waived} waived` : ""}${c.removal ? ` · ${c.removal} review` : ""}${c.blocked ? ` · ${c.blocked} blocked/ip` : ""} · ${c.open} not run</span>
           <div style="min-width:160px">${progressMeter(c)}</div></div>
       </div>
-      <div class="table-scroll"><table class="data"><thead><tr><th>Case</th><th>Title</th><th>Procedure</th><th>Result in This Run</th><th>vs Previous</th><th>History</th><th></th></tr></thead><tbody>${list.map(row).join("")}</tbody></table></div>
+      <div class="table-scroll"><table class="data"><thead><tr><th>Case</th><th>Title</th><th class="col-lo">Procedure</th><th>Result in This Run</th><th class="col-mid">vs Previous</th><th class="col-lo">History</th><th></th></tr></thead><tbody>${list.map(row).join("")}</tbody></table></div>
     </div>`;
   };
   const groups = [];

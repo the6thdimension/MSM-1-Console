@@ -60,9 +60,12 @@ function componentOptions(filter) {
 function evidenceRefs(text) {
   const refs = String(text || "").split(/\n+/).map(s => s.trim()).filter(Boolean);
   if (!refs.length) return "";
-  return refs.map(r => /^https?:\/\//i.test(r)
-    ? `<a class="ev-ref" href="${esc(r)}" target="_blank" rel="noopener noreferrer">${esc(r.replace(/^https?:\/\//i, "").slice(0, 40))}</a>`
-    : `<span class="ev-ref">${esc(r)}</span>`).join("");
+  // A reference that is a record code (e.g. DEF-006) links to that record.
+  return refs.map(r => {
+    if (/^https?:\/\//i.test(r)) return `<a class="ev-ref" href="${esc(r)}" target="_blank" rel="noopener noreferrer">${esc(r.replace(/^https?:\/\//i, "").slice(0, 40))}</a>`;
+    const hit = /^[A-Z]+-\d+$/.test(r) ? Store.byCode(r) : null;
+    return hit && ROUTE_OF[hit.coll] ? `<a class="ev-ref" href="${ROUTE_OF[hit.coll](hit.entity.id)}">${esc(r)}</a>` : `<span class="ev-ref">${esc(r)}</span>`;
+  }).join("");
 }
 
 function parseNum(s) {

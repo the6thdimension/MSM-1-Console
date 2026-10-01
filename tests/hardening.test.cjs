@@ -533,6 +533,23 @@ test('cases page: aligned result-first tables, spec and change signals, attentio
   assert.doesNotMatch(stale,new RegExp(`id="case-row-${tc.id}"`),'a case passed in the future is not stale');
   assert.match(h.Views.caseDetail(S.all('cases').find(c=>S.caseSpec(c).done<5&&c.status!=='Retired').id),/SPEC \d\/5 — MISSING/);
 });
+test('runs have their own page and the log filters and groups',async()=>{
+  const h=await ready(),S=h.Store;
+  const r=S.all('runs').find(x=>{const tc=S.get('cases',x.caseId);return tc&&(tc.requirementIds||[]).length;});
+  const tc=S.get('cases',r.caseId);
+  const page=h.Views.runDetail(r.id);
+  assert.match(page,new RegExp(`href="#/cases/${tc.id}"`),'links back to its case');
+  assert.match(page,/Measured vs Threshold/);assert.match(page,/run \d+ of \d+ for this case/);
+  assert.match(h.Views.runDetail('run-missing'),/not found/i);
+  assert.equal(vm.runInContext(`ROUTE_OF.runs(${JSON.stringify(r.id)})`,h.ctx),`#/runs/${r.id}`,'run codes link to the run page');
+  const log=h.Views.runs(new URLSearchParams());
+  assert.match(log,new RegExp(`href="#/runs/${r.id}"`));
+  const only=h.Views.runs(new URLSearchParams(`result=${encodeURIComponent(r.result)}`));
+  assert.ok([...only.matchAll(/<td>.*?badge[^>]*>([^<]+)<\/span><\/td>/g)].every(m=>m[1]===r.result),'result filter');
+  assert.match(h.Views.runs(new URLSearchParams('group=session')),/class="group-row"/);
+  assert.match(h.Views.runs(new URLSearchParams('build=none')),/runs-log|No runs match/);
+  assert.match(h.Views.runs(new URLSearchParams(`q=${encodeURIComponent(tc.code)}`)),new RegExp(tc.code));
+});
 test('runtime shell has no remote assets and disallows background connections',()=>{
   const html=fs.readFileSync(path.join(root,'index.html'),'utf8');assert.doesNotMatch(html,/(?:src|href)="https?:/);assert.match(html,/connect-src 'none'/);
   assert.doesNotMatch(fs.readFileSync(path.join(root,'js/views.js'),'utf8'),/fetch\(/);

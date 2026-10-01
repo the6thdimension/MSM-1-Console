@@ -1577,6 +1577,11 @@ table.case-table .c-act { width: 52px; text-align: center; }
 .form-note { font-size: 12px; padding: 8px 10px; border-radius: 4px; border: 1px solid var(--line); color: var(--ink-dim); }
 .form-note.warn { color: var(--orange); border-color: currentColor; background: rgba(255,139,62,.06); }
 
+/* Group header rows inside data tables (run log grouped by session or build). */
+table.data tr.group-row td { background: var(--bg-2); font-family: var(--disp); font-size: 13.5px; letter-spacing: .8px; text-transform: uppercase; color: var(--ink-dim); padding: 8px 12px 6px; }
+.run-measure { margin-bottom: 12px; }
+.run-measure .margin-bar { margin-top: 6px; }
+
 /* Column priority for wide tables: col-lo drops first, col-mid next, so the columns that
    matter stay on screen instead of scrolling sideways. Widths are the window width. */
 @media (max-width: 1250px) { .col-lo { display: none; } }

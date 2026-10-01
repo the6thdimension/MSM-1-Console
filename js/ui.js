@@ -31,7 +31,7 @@ const ROUTE_OF = {
   defects: id => `#/defects/${id}`,
   documents: () => "#/documents",
   testRuns: id => `#/testruns/${id}`,
-  runs: () => "#/runs",
+  runs: id => `#/runs/${id}`,
   releases: id => `#/releases/${id}`,
   builds: id => `#/builds/${id}`
 };

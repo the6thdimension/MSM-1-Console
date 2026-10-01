@@ -45,7 +45,7 @@ const App = {
         case "trace":       html = Views.trace(params); break;
         case "procedures":  html = seg[1] ? Views.procedureDetail(seg[1]) : Views.procedures(); break;
         case "plans":       html = seg[1] ? Views.planDetail(seg[1]) : Views.plans(); break;
-        case "runs":        html = Views.runs(params); break;
+        case "runs":        html = seg[1] ? Views.runDetail(seg[1]) : Views.runs(params); break;
         case "testruns":    html = seg[1] ? Views.testRun(seg[1], params) : Views.runs(params); nav = "runs"; break;
         case "risks":       html = seg[1] ? Views.riskDetail(seg[1]) : Views.risks(params); break;
         case "resources":   html = seg[1] ? Views.resourceDetail(seg[1]) : Views.resources(); break;

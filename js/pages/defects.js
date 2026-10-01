@@ -81,7 +81,7 @@ Views.defectDetail = function (id) {
       <div>
         ${panel("Component", comp ? `${chip("components", comp)} ${badge(Store.componentStatus(comp.id))}` : `<span class="faint small">Not assigned to a component</span>`)}
         ${panel("Found By", run
-          ? `<div><span class="code">${esc(run.code)}</span> ${badge(run.result)} <span class="mono faint">${esc(run.date || "")}</span>${runCase ? ` on ${chip("cases", runCase)}` : ""}
+          ? `<div>${codeLink("runs", run)} ${badge(run.result)} <span class="mono faint">${esc(run.date || "")}</span>${runCase ? ` on ${chip("cases", runCase)}` : ""}
              ${run.measured ? `<div class="mono small" style="margin-top:4px">${esc(run.measured)}</div>` : ""}</div>`
           : `<span class="faint small">No originating run recorded</span>`)}
         ${panel("Affected Test Cases", chips("cases", cases, "None linked"))}

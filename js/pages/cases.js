@@ -195,7 +195,7 @@ Views.caseDetail = function (id) {
     const plan = r.planId ? Store.get("plans", r.planId) : null;
     const trun = r.testRunId ? Store.get("testRuns", r.testRunId) : null;
     return `<tr>
-      <td><span class="code">${esc(r.code)}</span>${r.extKey ? `<div style="font-size:9.5px;margin-top:1px">${extKeyTag(r.extKey)}</div>` : ""}</td>
+      <td>${codeLink("runs", r)}${r.extKey ? `<div style="font-size:9.5px;margin-top:1px">${extKeyTag(r.extKey)}</div>` : ""}</td>
       <td class="num">${esc(r.date || "")}</td>
       <td>${badge(r.result)}</td>
       <td class="small">${buildTag(r) || `<span class="faint">—</span>`}</td>

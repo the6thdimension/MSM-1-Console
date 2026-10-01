@@ -155,7 +155,8 @@ Compatibility must retain both forms and validate counters against actual record
 | `#/trace?class=` | One requirement-by-case grid per class, each limited to the cases that verify its rows and grouped by system; class, system and gaps filters |
 | `#/procedures` | Procedure steps and entry/exit criteria, readiness strip, related cases |
 | `#/plans` | Case campaigns, dates, phase criteria, result rollup and pace estimate |
-| `#/runs` | Test run sessions, then the execution log with result, operator, measurement, evidence, issue key, session |
+| `#/runs?result=&build=&tr=&q=&group=` | Test run sessions, then the execution log newest first: filter by result, build (or "not recorded"), session (or "not in a session") and text; group by session or build. Build drops below 1000 px window width; measured, operator and plan/session below 1250 px |
+| `#/runs/:id` | One run: result, date, build and age, operator, case, component, system, plan, session, Jira key, record time, notes and evidence (evidence that names a record code links to it), measured value against each verified requirement's threshold, defects found by the run and other defects on the case, older/newer runs of the same case; ⚑ Defect files one linked to the run. Every run code in the app links here |
 | `#/testruns/:id?comp=` | One test run session: completion, per-component groups in tree order, top-level/subcomponent filter pills, vs-previous-run regressions, record/execute per case, complete/reopen/rerun |
 | `#/execute/:id?tr=` | Procedure checklist and run capture; with `tr` it records into that test run and returns to it. Fail offers a defect form |
 | `#/defects` | Severity, ownership, age, status workflow, component/case/run links; detail page has the same External Links — Jira / Zephyr / Share panel as cases and plans |

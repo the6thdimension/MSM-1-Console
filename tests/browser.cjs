@@ -10,6 +10,8 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
   const browser=await chromium.launch({channel:process.env.BROWSER_CHANNEL||'chrome',headless:true});
   const context=await browser.newContext({offline:true,acceptDownloads:true,viewport:{width:1440,height:1000}});
   const page=await context.newPage(),errors=[],remote=[];
+  // App.go only changes the hash; the page renders on hashchange. Wait for that render.
+  const go=async hash=>{await page.evaluate(h=>App.go(h),hash);await page.waitForFunction(h=>App._lastHash===h,hash);};
   page.on('pageerror',e=>errors.push(e.message));
   context.on('request',r=>{if(/^https?:/.test(r.url()))remote.push(r.url());});
   try {
@@ -24,7 +26,7 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
     await page.reload();await page.waitForFunction(()=>Store.db?.systems.some(s=>s.name==='Synthetic browser system'));
     console.log('PASS offline file launch, CRUD, escaping, reload');
 
-    await page.evaluate(()=>App.go('#/systems/sys-1'));
+    await go('#/systems/sys-1');
     await page.locator('[data-act="edit-system"]').click();await page.locator('#modal-form input[name="name"]').fill('Unsaved quota draft');
     await page.evaluate(()=>{window.originalSet=Storage.prototype.setItem;Storage.prototype.setItem=function(k,v){if(k==='msm1-te-db-v1')throw new DOMException('Synthetic quota','QuotaExceededError');return window.originalSet.call(this,k,v);};});
     await page.locator('#modal-form [type="submit"]').click();await page.locator('.toast.err').filter({hasText:'Not saved'}).last().waitFor();
@@ -34,13 +36,13 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
     await page.locator('#modal-form [type="submit"]').click();await page.waitForFunction(()=>Store.get('systems','sys-1').name==='Unsaved quota draft');
     console.log('PASS quota failure retains form, rollback and retry');
 
-    await page.evaluate(()=>App.go('#/execute/tc-1'));
+    await go('#/execute/tc-1');
     await page.locator('#exec-date').fill('2026-12-01');await page.locator('#exec-result').selectOption('Pass');
     await page.locator('[data-act="exec-save"]').click();await page.waitForFunction(()=>Store.latestRun('tc-1')?.date==='2026-12-01');
     assert.equal(await page.evaluate(()=>Store.get('cases','tc-1').status),'Complete');
     console.log('PASS execution and consistent status');
 
-    await page.evaluate(()=>App.go('#/systems/sys-3'));
+    await go('#/systems/sys-3');
     await page.locator('#view [data-act="full-regression"]').click();await page.locator('#confirm-yes').click();
     await page.waitForFunction(()=>location.hash.startsWith('#/testruns/'));
     const trId=await page.evaluate(()=>location.hash.split('/')[2]);
@@ -63,11 +65,11 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
     assert.equal(await page.evaluate(()=>Store.get('cases','tc-9').status),'Complete');
     console.log('PASS full regression, filtered recording, execute round trip, new results');
 
-    await page.evaluate(()=>App.go('#/cases'));
+    await go('#/cases');
     assert.ok(await page.locator('.case-card.sub').count()>=2,'subcomponent cards rendered');
     assert.notEqual(await page.locator('.case-card.sub').first().evaluate(e=>getComputedStyle(e).borderLeftStyle),
       await page.locator('.case-card.top').first().evaluate(e=>getComputedStyle(e).borderLeftStyle),'subcomponent cards styled differently');
-    await page.evaluate(()=>App.go('#/components/cmp-5'));
+    await go('#/components/cmp-5');
     await page.locator('.page-actions [data-act="comp-test"]').click();await page.locator('#confirm-yes').click();
     await page.waitForFunction(()=>location.hash.startsWith('#/testruns/'));
     const ct=await page.evaluate(()=>Store.get('testRuns',location.hash.split('/')[2]));
@@ -75,7 +77,7 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
     console.log('PASS component cards and component test from component page');
 
     // Cases page: record from a row; a Fail offers a pre-filled defect, as Execute does.
-    await page.evaluate(()=>App.go('#/cases'));
+    await go('#/cases');
     await page.locator('[data-act="record-run-row"][data-id="tc-16"]').click();
     await page.locator('#modal-form select[name="result"]').selectOption('Fail');
     await page.locator('#modal-form [type="submit"]').click();
@@ -85,7 +87,7 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
     await page.waitForFunction(()=>document.getElementById('case-row-tc-16')?.classList.contains('flash'));
     console.log('PASS record from a case row; Fail offers a linked defect');
 
-    await page.evaluate(()=>App.go('#/requirements/req-3'));
+    await go('#/requirements/req-3');
     await page.locator('.page-actions [data-act="add-requirement"][data-cls="SW"]').click();
     assert.equal(await page.locator('#modal-form select[name="reqClass"]').inputValue(),'SW');
     assert.equal(await page.locator('#modal-form input[name="derivedFromIds"][value="req-3"]').isChecked(),true,'derived button presets the parent');
@@ -96,15 +98,15 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
     await page.waitForFunction(()=>Store.db.requirements.some(r=>r.title==='Synthetic frame pacing'));
     const sw=await page.evaluate(()=>Store.db.requirements.find(r=>r.title==='Synthetic frame pacing'));
     assert.match(expectedSW,/^SWR-\d{3}$/);assert.equal(sw.code,expectedSW);assert.equal(sw.reqClass,'SW');assert.deepEqual(sw.derivedFromIds,['req-3']);
-    await page.evaluate(()=>App.go('#/requirements'));
+    await go('#/requirements');
     assert.equal(await page.locator('.req-section').count(),3);
     assert.equal(await page.locator('.req-section.cls-sw tbody tr:not(.req-group)').count(),await page.evaluate(()=>Store.all('requirements').filter(r=>r.reqClass==='SW').length));
-    await page.evaluate(()=>App.go('#/trace'));
+    await go('#/trace');
     assert.equal(await page.locator('.trace-grid-wrap').count(),3);
     assert.ok(await page.locator('.trace-grid-wrap.cls-sw tr.uncovered').count()>=1,'uncovered SW requirement flagged in its own grid');
     console.log('PASS requirement classes, derived requirement input, per-class trace grids');
 
-    await page.evaluate(()=>App.go('#/defects/def-1'));
+    await go('#/defects/def-1');
     await page.locator('#extlink-url').fill('https://example.test/browse/BUG-42');
     await page.locator('#extlink-label').fill('Synthetic bug');
     await page.locator('[data-act="add-extlink"][data-coll="defects"]').click();
@@ -115,7 +117,8 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
     await page.waitForFunction(()=>!(Store.get('defects','def-1').extLinks||[]).length);
     console.log('PASS defect external links add and remove');
 
-    await page.evaluate(()=>App.go('#/schedule'));
+    await go('#/schedule');
+    await page.locator('.gantt-tag.dec').first().waitFor();
     assert.ok(await page.locator('.gantt-tag.dec').count()>=1,'decision points are labeled on the chart');
     assert.ok(await page.locator('.gantt-span').count()>=1,'multi-day events drawn as spans');
     await page.locator('.gantt-zoom a',{hasText:'This quarter'}).click();
@@ -136,7 +139,7 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
 
     // Releases and builds: add a build through the UI, record a run that defaults to it.
     const sysId=await page.evaluate(()=>Store.caseSystemId(Store.get('cases','tc-7')));
-    await page.evaluate(()=>App.go('#/releases'));
+    await go('#/releases');
     await page.locator(`.rel-sys [data-act="add-build"][data-sys="${sysId}"]`).click();
     await page.locator('#modal-form input[name="label"]').fill('9.9.9-synthetic');
     await page.locator('#modal-form select[name="status"]').selectOption('Under Test');
@@ -144,22 +147,22 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
     await page.waitForFunction(()=>Store.all('builds').some(b=>b.label==='9.9.9-synthetic'));
     const newBuild=await page.evaluate(()=>Store.all('builds').find(b=>b.label==='9.9.9-synthetic'));
     assert.equal(newBuild.systemId,sysId);
-    await page.evaluate(()=>App.go('#/cases/tc-7'));
+    await go('#/cases/tc-7');
     await page.locator('.page-actions [data-act="record-run"]').click();
     assert.equal(await page.locator('#modal-form select[name="buildId"]').inputValue(),newBuild.id,'run form defaults to the build under test');
     await page.locator('#modal-form [type="submit"]').click();
     await page.waitForFunction(id=>Store.latestRun('tc-7')?.buildId===id,newBuild.id);
     assert.match(await page.locator('#view').textContent(),/9\.9\.9-synthetic/);
-    await page.evaluate(id=>App.go('#/builds/'+id),newBuild.id);
+    await go('#/builds/'+newBuild.id);
     assert.match(await page.locator('#view').textContent(),/Results On This Build[^]*TC-007/i);
     console.log('PASS releases and builds: add build, run defaults to it, build page shows the result');
 
-    await page.evaluate(()=>App.go('#/releases/rel-1'));
+    await go('#/releases/rel-1');
     assert.match(await page.locator('#view').textContent(),/Run On Candidate[^]*Carried Forward[^]*Exit Criteria/);
     assert.ok(await page.locator('#view .crit').count()>=3,'release exit criteria listed');
-    await page.evaluate(()=>App.go('#/builds/bld-3'));
+    await go('#/builds/bld-3');
     assert.match(await page.locator('#view').textContent(),/Compared With ⎇ 1\.1\.0-alpha[^]*Regressed[^]*TC-017[^]*Not re-run on this build/i);
-    await page.evaluate(()=>App.go('#/defects/def-4'));
+    await go('#/defects/def-4');
     const unchanged=await page.evaluate(()=>JSON.stringify(Store.get('defects','def-4')));
     await page.locator('[data-act="defect-verify"]').click();
     await page.locator('#confirm-yes').waitFor();
@@ -169,7 +172,7 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
     assert.equal(await page.evaluate(()=>Store.get('defects','def-4').verifiedInBuildId),'bld-3');
     console.log('PASS release readiness, build comparison, defect verify-and-close');
 
-    await page.evaluate(()=>App.go('#/requirements'));
+    await go('#/requirements');
     await page.locator('#scope-select').selectOption('sys-3');
     await page.locator('.scope-banner').waitFor();
     const scopedReqs=await page.evaluate(()=>Store.all('requirements').filter(r=>Store.ownerOf('requirements',r)==='sys-3'||!Store.ownerOf('requirements',r)).length);
@@ -178,7 +181,7 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
     assert.equal(await page.evaluate(()=>Scope.list('requirements').every(r=>Store.ownerOf('requirements',r)==='sys-3')),true);
     await page.reload();await page.waitForFunction(()=>!!Store.db&&!Store._tx);
     assert.equal(await page.locator('#scope-select').inputValue(),'sys-3','scope survives reload as a view preference');
-    await page.evaluate(()=>App.go('#/ownership'));
+    await go('#/ownership');
     const unowned=()=>page.evaluate(()=>Store.OWNED.reduce((n,c)=>n+Store.all(c).filter(r=>!Store.ownerOf(c,r)).length,0));
     const before=await unowned();
     await page.locator('[data-act="own-accept"]').click();await page.locator('#confirm-yes').click();
@@ -187,7 +190,7 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
     assert.equal(await page.locator('.scope-banner').count(),0);
     console.log('PASS scope switcher, persisted preference, ownership suggestions');
 
-    await page.evaluate(()=>App.go('#/interchange'));
+    await go('#/interchange');
     const beforeCSV=await page.evaluate(()=>Store.db.requirements.length);
     await page.locator('#import-jira-file').setInputFiles({name:'synthetic.csv',mimeType:'text/csv',buffer:Buffer.from('Summary,Priority\nBrowser CSV,High')});
     await page.locator('#confirm-yes').waitFor();assert.equal(await page.evaluate(()=>Store.db.requirements.length),beforeCSV);
@@ -203,7 +206,7 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
     const file=await download.path();assert.equal(JSON.parse(fs.readFileSync(file,'utf8')).meta.program,payload.meta.program);
     console.log('PASS JSON preview, import, download');
 
-    await page.evaluate(()=>App.go('#/systems/sys-2'));await page.locator('[data-act="del-system"]').click();
+    await go('#/systems/sys-2');await page.locator('[data-act="del-system"]').click();
     assert.match(await page.locator('.modal-body').textContent(),/Affected records:.*runs:/);
     await page.locator('#confirm-yes').click();await page.waitForFunction(()=>!Store.get('systems','sys-2'));
     assert.equal(await page.evaluate(()=>Store.get('defects','def-1').runId),'');
@@ -227,8 +230,8 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
     await tab.close();await page.reload();await page.waitForFunction(()=>!!Store.db&&!Store._tx);
     console.log('PASS real browser competing tabs and five simultaneous-write races');
 
-    for(const route of ['dashboard','schedule','systems','requirements','cases','trace','idsk','procedures','plans','runs','defects','risks','resources','documents','interchange','sitrep','decisions/dec-1/report','testruns/tr-1','components/cmp-14','ownership','releases','releases/rel-1','builds/bld-9']) {
-      await page.evaluate(r=>App.go('#/'+r),route);await page.waitForFunction(r=>location.hash==='#/'+r,route);
+    for(const route of ['dashboard','schedule','systems','requirements','cases','trace','idsk','procedures','plans','runs','defects','risks','resources','documents','interchange','sitrep','decisions/dec-1/report','testruns/tr-1','components/cmp-14','ownership','releases','releases/rel-1','builds/bld-9','runs/run-7','runs?group=build']) {
+      await go('#/'+route);
       assert.doesNotMatch(await page.locator('#view').textContent(),/Something went wrong rendering/);
     }
     const good=await page.evaluate(()=>localStorage.getItem('msm1-te-db-v1'));

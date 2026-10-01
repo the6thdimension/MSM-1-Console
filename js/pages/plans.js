@@ -1,5 +1,5 @@
 /* ============================================================
-   Test plans and the run log.
+   Test plans.
    Page module: adds to Views and Actions; loaded after js/views.js.
    ============================================================ */
 Views.plans = function () {
@@ -79,42 +79,6 @@ Views.planDetail = function (id) {
     ${testRunsPanel("Test Runs from This Plan", Store.testRunsSorted(t => t.planId === p.id), "No test runs yet — use ▶ Start Run.")}
     ${auditPanel(p.id)}
     ${extLinksPanel("plans", p)}`;
-};
-
-Views.runs = function (params) {
-  const resF = params.get("result") || "";
-  let runs = Scope.list("runs").slice().sort((a, b) => Store.compareRuns(a, b));
-  if (resF) runs = runs.filter(r => r.result === resF);
-
-  const rows = runs.map(r => {
-    const tc = Store.get("cases", r.caseId);
-    const plan = r.planId ? Store.get("plans", r.planId) : null;
-    const trun = r.testRunId ? Store.get("testRuns", r.testRunId) : null;
-    return `<tr>
-      <td><span class="code">${esc(r.code)}</span>${r.extKey ? `<div style="font-size:9.5px;margin-top:1px">${extKeyTag(r.extKey)}</div>` : ""}</td>
-      <td class="num">${esc(r.date || "")}</td>
-      <td>${tc ? chip("cases", tc) : "—"}</td>
-      <td>${badge(r.result)}</td>
-      <td class="small">${r.measured ? `<span class="mono">${esc(r.measured)}</span>` : `<span class="faint">—</span>`}</td>
-      <td>${esc(r.operator || "")}</td>
-      <td>${plan ? codeLink("plans", plan) : "—"}${trun ? `<div>${testRunLink(trun)}</div>` : ""}</td>
-      <td class="small" style="max-width:300px">${esc(r.notes || "")}${r.evidence ? `<div>${evidenceRefs(r.evidence)}</div>` : ""}</td>
-      <td class="inline-actions">${actBtn("Edit", "edit-run", r.id)}${actBtn("Del", "del-run", r.id)}</td>
-    </tr>`;
-  }).join("");
-
-  return `
-    ${pageHead([{ label: "Test Runs" }], "Test Runs",
-      actBtn("● Record Run", "record-run-any", null, "", false),
-      "Test run sessions group many cases into one campaign pass; the log below records every individual case result, newest first.")}
-    ${testRunsPanel("Test Run Sessions", Store.testRunsSorted(t => Scope.includes("testRuns", t)), "No test run sessions yet — start one from a plan (▶ Start Run) or a system (▶ Full Regression).")}
-    <div class="filter-bar">
-      <select data-filter="result"><option value="">All results</option>${RUN_RESULTS.map(s => `<option ${resF === s ? "selected" : ""}>${s}</option>`).join("")}</select>
-      <span class="faint mono small">${runs.length} shown</span>
-    </div>
-    ${panel("Log", rows
-      ? `<div class="table-scroll"><table class="data"><thead><tr><th>Run</th><th>Date</th><th>Test Case</th><th>Result</th><th>Measured</th><th>Operator</th><th>Plan / Test Run</th><th>Notes / Evidence</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
-      : emptyMsg("No runs recorded."), "", true)}`;
 };
 
 function planFields() {

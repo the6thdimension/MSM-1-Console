@@ -114,7 +114,7 @@ Views.dashboard = function () {
           ? `<div class="table-scroll"><table class="data"><thead><tr><th>Run</th><th>Test Case</th><th>Result</th><th>Date</th></tr></thead><tbody>${
               recentRuns.map(r => {
                 const tc = Store.get("cases", r.caseId);
-                return `<tr><td><span class="code">${esc(r.code)}</span>${r.extKey ? `<div style="font-size:9.5px;margin-top:1px">${extKeyTag(r.extKey)}</div>` : ""}</td><td>${tc ? chip("cases", tc) : "—"}</td><td>${badge(r.result)}</td><td class="num">${esc(r.date || "")}</td></tr>`;
+                return `<tr><td>${codeLink("runs", r)}${r.extKey ? `<div style="font-size:9.5px;margin-top:1px">${extKeyTag(r.extKey)}</div>` : ""}</td><td>${tc ? chip("cases", tc) : "—"}</td><td>${badge(r.result)}</td><td class="num">${esc(r.date || "")}</td></tr>`;
               }).join("")
             }</tbody></table></div>`
           : emptyMsg("No runs recorded"), "", true)}
