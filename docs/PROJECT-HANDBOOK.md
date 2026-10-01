@@ -98,18 +98,18 @@ The tables below describe the application's known fields, not a strict schema.
 
 | Collection | Important fields and relationships |
 |---|---|
-| `meta` | `program`, `version` (seed/blank use 2), `seq` counters, `jiraBaseUrl` |
+| `meta` | `program`, `version` (seed/blank use 2), `seq` counters (plus per-class requirement series `requirements.REQ` / `requirements.PSPEC` / `requirements.SWR`), `jiraBaseUrl` |
 | `systems` | `id`, `code`, `name`, `description`, `team`, `lead` |
 | *(ownership)* | Optional `systemId` on `requirements`, `procedures`, `plans`, `testRuns`, `risks`, `defects`, `decisions`, `events`, `documents`, `resources` = owning system; blank or absent = program-level / shared |
 | `components` | `id`, `code`, `systemId`, optional `parentComponentId` (subcomponent link, any depth, same system), `name`, `description` |
-| `requirements` | `id`, `code`, `title`, `text`, `type`, `priority`, `method`, `measure`, `threshold`, `objective`, `componentIds[]`, `extKey` |
+| `requirements` | `id`, `code`, `title`, `text`, `type`, `priority`, `method`, `measure`, `threshold`, `objective`, `componentIds[]`, `extKey`, optional `reqClass` (`System` / `PSPEC` / `SW`; absent = System), optional `derivedFromIds[]` (parent requirements it flows down from) |
 | `procedures` | `id`, `code`, `title`, `description`, `steps[]` of strings |
 | `criteria` | `id`, `code`, `parentType` (`procedure`/`plan`), `parentId`, `kind` (`entry`/`exit`), `text`, `status`; old records may have `procedureId` |
 | `cases` | `id`, `code`, `componentId` and/or `systemId` (blank component = system-level case), `title`, `objective`, `requirementIds[]`, `procedureId`, `resourceIds[]`, `priority`, `status` (adds `Retired`), `venue`, `testType`, `extKey`, `extLinks[]`, `removalNominated`, `reviewDisposition`, `preconditions`, `testData`, `expectedResults`, `passFailCriteria` |
 | `plans` | `id`, `code`, `name`, `description`, `phase`, `status`, `start`, `end`, `caseIds[]`, `decisionId`, `extKey`, `extLinks[]`, optional `regressionSystemId`; old `decision` free text migrates |
 | `runs` | `id`, `code`, `caseId`, optional `planId`, optional `testRunId`, `date`, `operator`, `result` (adds `Waived`, `Review for Removal`), `measured`, `evidence`, `notes`, `extKey` |
 | `testRuns` | `id`, `code`, `name`, `operator`, `status` (free text; app uses Active/Complete/Aborted), `planId`, `systemId`, `componentId` (optional scope root), `caseIds[]` (scope frozen at start), `notes`, `createdAt`, `startedAt`, `completedAt` (date-time text) |
-| `defects` | `id`, `code`, `title`, `description`, `severity`, `status`, `componentId`, `caseIds[]`, `runId`, `owner`, `opened`, `closed` |
+| `defects` | `id`, `code`, `title`, `description`, `severity`, `status`, `componentId`, `caseIds[]`, `runId`, `owner`, `opened`, `closed`, optional `extLinks[]` |
 | `risks` | `id`, `code`, `title`, `description`, `category`, `status`, `owner`, likelihood/impact, initial and residual likelihood/impact, `relatedRequirementIds[]`, `relatedCaseIds[]`, nested `mitigations[]` |
 | `resources` | `id`, `code`, `name`, `type`, `description`, `vvaRequired`, `intendedUse`, `owner`, `authority`, `verification`, `validation`, `accreditation`, `accDate`, `accScope`, `artifacts` booleans |
 | `decisions` | `id`, `code`, `title`, `description`, `status`, `date`, `authority`, `requirementIds[]` |
@@ -125,7 +125,11 @@ with `url` and `label`. Resources' artifact flags are `accPlan`, `vvPlan`,
 
 Generated IDs combine a three-letter collection prefix, current timestamp in
 base 36, and a sequence number. `nextCode()` peeks at the next counter value and
-`nextId()` increments it. Existing seed IDs use shorter forms such as `tc-1`.
+`nextId()` increments it. Requirement codes instead come from `nextReqCode(class)`:
+each class (REQ / PSPEC / SWR) has its own `meta.seq["requirements.<PREFIX>"]`
+counter, so adding a PSPEC never skips a System number and a deleted code is not
+reissued. The System series starts from the legacy shared counter the first time.
+Existing seed IDs use shorter forms such as `tc-1`.
 Compatibility must retain both forms and validate counters against actual records.
 
 ## 5. Pages and behavior
@@ -134,15 +138,15 @@ Compatibility must retain both forms and validate counters against actual record
 |---|---|
 | `#/dashboard` | Coverage, verification, results, risks, defects, plan progress, snapshot trends, links to work |
 | `#/systems`, `#/components/:id` | System/component/subcomponent tree, derived component health, regression scope panel and ▶ Full Regression; component pages add a component test scope panel, its test history, and ▶ Component Test |
-| `#/requirements` | Requirement register, component trace, verification rollup, measured-value history |
+| `#/requirements?class=&q=` | Register in one section per class (System Requirements, PSPECs, SW Requirements) with class tabs and counts, a per-class status bar and add button, rows grouped by owning system, ↑ parent / ↓ derived flow-down chips, text filter. Detail adds a Requirement Flow-Down panel and **+ Derived PSPEC / + Derived SW Req** buttons |
 | `#/cases` | Cases as component cards per system in tree order (subcomponent cards indented with a dashed purple rail and level badge; a system-level card per system), filters, bulk changes, review queue; `?view=table` gives the flat table |
-| `#/trace` | Requirement-by-case matrix grouped by system, coverage and gaps filters |
+| `#/trace?class=` | One requirement-by-case grid per class, each limited to the cases that verify its rows and grouped by system; class, system and gaps filters |
 | `#/procedures` | Procedure steps and entry/exit criteria, readiness strip, related cases |
 | `#/plans` | Case campaigns, dates, phase criteria, result rollup and pace estimate |
 | `#/runs` | Test run sessions, then the execution log with result, operator, measurement, evidence, issue key, session |
 | `#/testruns/:id?comp=` | One test run session: completion, per-component groups in tree order, top-level/subcomponent filter pills, vs-previous-run regressions, record/execute per case, complete/reopen/rerun |
 | `#/execute/:id?tr=` | Procedure checklist and run capture; with `tr` it records into that test run and returns to it. Fail offers a defect form |
-| `#/defects` | Severity, ownership, age, status workflow, component/case/run links |
+| `#/defects` | Severity, ownership, age, status workflow, component/case/run links; detail page has the same External Links — Jira / Zephyr / Share panel as cases and plans |
 | `#/risks` | 5×5 matrix, current/initial/residual risk information and mitigation workflow |
 | `#/resources` | Model/simulation/rig/referent register and VV&A tracks, intended use and caveats |
 | `#/idsk`, `#/decisions/:id` | Decisions, informing requirements and plans, evidence readiness |
@@ -206,6 +210,11 @@ Compatibility must retain both forms and validate counters against actual record
   A parent in another system is displayed as a root rather than rejected. Deleting
   a component moves its children up to its parent; moving a component to another
   system moves its whole subtree.
+- Requirement classes: a class only groups and numbers requirements; every class
+  uses the same verification rollup and trace rules. Reclassifying keeps the code.
+  Flow-down (`derivedFromIds`) is informational: a parent's status is never derived
+  from its children. Self-derivation is rejected; deleting a parent removes the
+  link from its children without deleting them.
 - Closed and Deferred defects are excluded from the “open” calculation.
 - Decision readiness is the percentage of linked requirements currently verified;
   no linked requirements returns no readiness value. It is not an approval gate.
@@ -241,7 +250,10 @@ commit. Failed forms remain open and the candidate can be exported. See
 
 Full JSON contains records, unknown fields, audit, snapshots and embedded files.
 External references are not copied files. CSV covers selected fields: Jira matches
-key, code then title; Zephyr matches key then TC label. Ambiguous matches stop and
+key, code then title; a new Jira row whose summary starts with a `PSPEC-` or
+`SWR-` code joins that class and keeps the code. RTM export adds the class as a
+label; the traceability CSV appends `Requirement Class` and `Derived From` columns
+after the existing ones. Zephyr matches key then TC label. Ambiguous matches stop and
 absent columns preserve existing fields. CSV does not reconstruct every trace
 label or replace existing procedure steps.
 

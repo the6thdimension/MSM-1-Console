@@ -73,6 +73,34 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
     assert.equal(ct.componentId,'cmp-5');assert.ok(ct.caseIds.includes('tc-15'),'component test includes nested subcomponent cases');
     console.log('PASS component cards and component test from component page');
 
+    await page.evaluate(()=>App.go('#/requirements/req-3'));
+    await page.locator('.page-actions [data-act="add-requirement"][data-cls="SW"]').click();
+    assert.equal(await page.locator('#modal-form select[name="reqClass"]').inputValue(),'SW');
+    assert.equal(await page.locator('#modal-form input[name="derivedFromIds"][value="req-3"]').isChecked(),true,'derived button presets the parent');
+    await page.locator('#modal-form input[name="title"]').fill('Synthetic frame pacing');
+    await page.locator('#modal-form textarea[name="text"]').fill('The render loop software shall pace frames to the display refresh.');
+    await page.locator('#modal-form [type="submit"]').click();
+    await page.waitForFunction(()=>Store.db.requirements.some(r=>r.title==='Synthetic frame pacing'));
+    const sw=await page.evaluate(()=>Store.db.requirements.find(r=>r.title==='Synthetic frame pacing'));
+    assert.equal(sw.code,'SWR-005');assert.equal(sw.reqClass,'SW');assert.deepEqual(sw.derivedFromIds,['req-3']);
+    await page.evaluate(()=>App.go('#/requirements'));
+    assert.equal(await page.locator('.req-section').count(),3);
+    assert.equal(await page.locator('.req-section.cls-sw tbody tr:not(.req-group)').count(),await page.evaluate(()=>Store.all('requirements').filter(r=>r.reqClass==='SW').length));
+    await page.evaluate(()=>App.go('#/trace'));
+    assert.equal(await page.locator('.trace-grid-wrap').count(),3);
+    assert.ok(await page.locator('.trace-grid-wrap.cls-sw tr.uncovered').count()>=1,'uncovered SW requirement flagged in its own grid');
+    console.log('PASS requirement classes, derived requirement input, per-class trace grids');
+
+    await page.evaluate(()=>App.go('#/defects/def-1'));
+    await page.locator('#extlink-url').fill('https://example.test/browse/BUG-42');
+    await page.locator('#extlink-label').fill('Synthetic bug');
+    await page.locator('[data-act="add-extlink"][data-coll="defects"]').click();
+    await page.waitForFunction(()=>(Store.get('defects','def-1').extLinks||[]).some(l=>l.label==='Synthetic bug'));
+    assert.equal(await page.locator('#view a[href="https://example.test/browse/BUG-42"]').count(),1);
+    await page.locator('[data-act="del-extlink"][data-coll="defects"]').first().click();
+    await page.waitForFunction(()=>!(Store.get('defects','def-1').extLinks||[]).length);
+    console.log('PASS defect external links add and remove');
+
     await page.evaluate(()=>App.go('#/requirements'));
     await page.locator('#scope-select').selectOption('sys-3');
     await page.locator('.scope-banner').waitFor();

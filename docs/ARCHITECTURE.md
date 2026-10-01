@@ -72,6 +72,7 @@ erDiagram
   COMPONENT o|--o{ CASE : owns
   SYSTEM o|--o{ CASE : owns_system_level
   COMPONENT }o--o{ REQUIREMENT : traced_by
+  REQUIREMENT }o--o{ REQUIREMENT : derived_from
   PROCEDURE o|--o{ CASE : supplies_steps
   PROCEDURE ||--o{ CRITERION : has
   PLAN ||--o{ CRITERION : has
@@ -100,7 +101,9 @@ erDiagram
 This is the intended logical model; the current store does not enforce all
 cardinalities. A case belongs to a component (whose system it inherits) or, with
 no component, directly to a system. Components nest through `parentComponentId`;
-cycles are rejected. A test run session stores its frozen case list; each case's
+cycles are rejected. Requirements carry an optional class (System, PSPEC, SW) and
+may flow down from parents through `derivedFromIds`; the trace matrix draws one grid
+per class. Flow-down never feeds the verification rollup. A test run session stores its frozen case list; each case's
 result in it is an ordinary run carrying `testRunId`, so per-case history and
 every existing rollup keep working unchanged. Requirements, procedures, plans,
 test runs, risks, defects, decisions, events, documents and resources may carry an

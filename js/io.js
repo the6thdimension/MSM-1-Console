@@ -66,7 +66,8 @@ const IO = {
   exportJiraRequirements() {
     const rows = [["Issue Type", "Issue key", "Summary", "Description", "Priority", "Labels"]];
     for (const r of Store.all("requirements")) {
-      const labels = [r.code, r.type, r.measure && r.measure !== "None" ? r.measure : ""]
+      const cls = Store.reqClass(r) === "System" ? "" : Store.reqClassInfo(Store.reqClass(r)).one;
+      const labels = [r.code, r.type, r.measure && r.measure !== "None" ? r.measure : "", cls]
         .filter(Boolean).map(l => l.replace(/\s+/g, "-")).join(" ");
       const desc = r.text +
         (r.threshold ? `\n\nThreshold: ${r.threshold}` : "") +
@@ -80,17 +81,19 @@ const IO = {
 
   /* RTM-style traceability: one row per requirement↔case link. */
   exportTraceability() {
-    const rows = [["Requirement", "Requirement Summary", "Measure", "Test Case", "Test Case Summary", "Case Status", "Latest Result", "Latest Run Date", "Coverage Rollup"]];
+    // Class and flow-down columns are appended so existing column positions never move.
+    const rows = [["Requirement", "Requirement Summary", "Measure", "Test Case", "Test Case Summary", "Case Status", "Latest Result", "Latest Run Date", "Coverage Rollup", "Requirement Class", "Derived From"]];
     for (const r of Store.all("requirements")) {
       const cases = Store.casesOfRequirement(r.id);
       const roll = Store.reqStatus(r.id);
+      const tail = [Store.reqClassInfo(Store.reqClass(r)).one, Store.derivedParents(r).map(p => p.code).join(" ")];
       if (!cases.length) {
-        rows.push([r.code, r.title, r.measure || "", "", "", "", "", "", "NO COVERAGE"]);
+        rows.push([r.code, r.title, r.measure || "", "", "", "", "", "", "NO COVERAGE", ...tail]);
         continue;
       }
       for (const tc of cases) {
         const run = Store.latestRun(tc.id);
-        rows.push([r.code, r.title, r.measure || "", tc.code, tc.title, tc.status, run ? run.result : "Not Run", run ? run.date || "" : "", roll]);
+        rows.push([r.code, r.title, r.measure || "", tc.code, tc.title, tc.status, run ? run.result : "Not Run", run ? run.date || "" : "", roll, ...tail]);
       }
     }
     this.download(`traceability-matrix-${this.stamp()}.csv`, this.toCSV(rows));
@@ -135,6 +138,9 @@ const IO = {
         Store.update('requirements',existing.id,patch);updated++;
       }
       else {
+        // A new row whose summary carries a PSPEC-/SWR- code joins that class and keeps the code.
+        const cls = codeHint && Store.REQ_CLASSES.find(c => c.key !== "System" && Store.reqCodeNumber(codeHint, c.prefix));
+        if (cls) { patch.reqClass = cls.key; if (!DataGuard.collections.some(c => (Store.db[c] || []).some(x => x.code === codeHint))) patch.code = codeHint; }
         Store.add("requirements", Object.assign({ type: "Functional", method: "Test", measure: "None", threshold: "", objective: "", componentIds: [] }, patch));
         added++;
       }

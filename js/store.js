@@ -273,7 +273,8 @@ const Store = {
     if (!this._tx) throw new Error('Use Store.command() for changes.');
     for(const key of DataGuard.arrays[coll]||[])if(obj[key]===undefined)obj[key]=[];
     if (coll === 'runs' && obj.recordedAt === undefined) obj.recordedAt = new Date().toISOString();
-    obj.code = obj.code || this.nextCode(coll);
+    obj.code = obj.code || (coll === "requirements" ? this.nextReqCode(obj.reqClass) : this.nextCode(coll));
+    if (coll === "requirements") this.claimReqCode(obj);
     obj.id = this.nextId(coll);
     this.db[coll].push(obj);
     this.logAudit(coll, obj, "created");
@@ -353,6 +354,7 @@ const Store = {
       db.cases.forEach(tc => tc.requirementIds = (tc.requirementIds || []).filter(x => x !== id));
       db.risks.forEach(r => r.relatedRequirementIds = (r.relatedRequirementIds || []).filter(x => x !== id));
       (db.decisions || []).forEach(d => d.requirementIds = (d.requirementIds || []).filter(x => x !== id));
+      db.requirements.forEach(r => { if (Array.isArray(r.derivedFromIds)) r.derivedFromIds = r.derivedFromIds.filter(x => x !== id); });
     }
     if (coll === "decisions") {
       db.plans.forEach(p => { if (p.decisionId === id) p.decisionId = ""; });
@@ -387,6 +389,42 @@ const Store = {
     const comp = tc.componentId ? this.get("components", tc.componentId) : null;
     return comp ? comp.systemId : (tc.systemId || "");
   },
+
+  /* ---------- requirement classes ----------
+     Absent reqClass = System. PSPECs and SW requirements get their own code series. */
+  REQ_CLASSES: [
+    { key: "System", label: "System Requirements", one: "System Requirement", prefix: "REQ" },
+    { key: "PSPEC", label: "PSPECs", one: "PSPEC", prefix: "PSPEC" },
+    { key: "SW", label: "SW Requirements", one: "SW Requirement", prefix: "SWR" }
+  ],
+  reqClass(r) { return (r && r.reqClass) || "System"; },
+  reqClassInfo(key) { return this.REQ_CLASSES.find(c => c.key === key) || this.REQ_CLASSES[0]; },
+  /* Next free code in a class's own series; System uses the normal REQ counter. */
+  /* Each class numbers its own series in meta.seq["requirements.<PREFIX>"], so adding PSPECs
+     never skips System numbers and a deleted code is never handed out again. Before the System
+     key exists, the legacy shared counter is its floor. Peeks only; add() records the claim. */
+  reqSeqKey(prefix) { return `requirements.${prefix}`; },
+  nextReqCode(cls) {
+    const prefix = this.reqClassInfo(cls || "System").prefix;
+    const seq = this.db.meta.seq, key = this.reqSeqKey(prefix);
+    const floor = seq[key] !== undefined ? seq[key] : prefix === "REQ" ? (seq.requirements || 0) : 0;
+    const used = new Set(DataGuard.collections.flatMap(c => (this.db[c] || []).map(r => r.code)));
+    let n = this.all("requirements").reduce((m, r) => Math.max(m, this.reqCodeNumber(r.code, prefix)), floor) + 1;
+    while (used.has(`${prefix}-${String(n).padStart(3, "0")}`)) n++;
+    return `${prefix}-${String(n).padStart(3, "0")}`;
+  },
+  reqCodeNumber(code, prefix) { return Number((String(code || "").match(new RegExp(`^${prefix}-(\\d+)$`)) || [])[1]) || 0; },
+  claimReqCode(r) {
+    // Pin the System series before the shared id counter moves past it.
+    const sysKey = this.reqSeqKey("REQ");
+    if (this.db.meta.seq[sysKey] === undefined) this.db.meta.seq[sysKey] = Number(this.nextReqCode("System").slice(4)) - 1;
+    const c = this.REQ_CLASSES.find(x => this.reqCodeNumber(r.code, x.prefix));
+    if (!c) return;
+    const key = this.reqSeqKey(c.prefix), n = this.reqCodeNumber(r.code, c.prefix);
+    if (!(this.db.meta.seq[key] >= n)) this.db.meta.seq[key] = n;
+  },
+  derivedParents(r) { return (r.derivedFromIds || []).map(id => this.get("requirements", id)).filter(Boolean); },
+  derivedChildren(reqId) { return this.all("requirements").filter(r => (r.derivedFromIds || []).includes(reqId)); },
 
   /* ---------- system ownership ----------
      The system a record belongs to, or "" for program-level / shared. Structural

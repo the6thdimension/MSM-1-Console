@@ -9,7 +9,7 @@ const DataGuard = {
   },
   // systemId on owned collections = owning system ('' = program-level / shared).
   refs: {
-    components: { systemId: 'systems', parentComponentId: 'components' }, requirements: { componentIds: 'components', systemId: 'systems' },
+    components: { systemId: 'systems', parentComponentId: 'components' }, requirements: { componentIds: 'components', systemId: 'systems', derivedFromIds: 'requirements' },
     cases: { componentId: 'components', systemId: 'systems', procedureId: 'procedures', requirementIds: 'requirements', resourceIds: 'resources' },
     procedures: { systemId: 'systems' },
     plans: { caseIds: 'cases', decisionId: 'decisions', regressionSystemId: 'systems', systemId: 'systems' }, runs: { caseId: 'cases', planId: 'plans', testRunId: 'testRuns' },
@@ -131,10 +131,10 @@ const DataGuard = {
         codes.add(r.code);
       }
     };
-    const strings = ['code','name','title','description','text','objective','threshold','measure','method','type','priority','status','phase','date','start','end','operator','result','measured','evidence','notes','extKey','venue','testType','owner','authority','intendedUse','accDate','accScope','opened','closed','category','docType','url','fileName','fileType','dataUrl','relatedCodes','added','decision','reviewDisposition','preconditions','testData','expectedResults','passFailCriteria','createdAt','startedAt','completedAt','team','lead'];
+    const strings = ['code','name','title','description','text','objective','threshold','measure','method','type','priority','status','phase','date','start','end','operator','result','measured','evidence','notes','extKey','venue','testType','owner','authority','intendedUse','accDate','accScope','opened','closed','category','docType','url','fileName','fileType','dataUrl','relatedCodes','added','decision','reviewDisposition','preconditions','testData','expectedResults','passFailCriteria','createdAt','startedAt','completedAt','team','lead','reqClass'];
     const known = {
       systems:'name description team lead', components:'systemId parentComponentId name description',
-      requirements:'title text type priority method measure threshold objective extKey systemId',
+      requirements:'title text type priority method measure threshold objective extKey systemId reqClass',
       procedures:'title description systemId', criteria:'parentType parentId procedureId kind text status',
       cases:'componentId systemId title objective procedureId priority status venue testType extKey reviewDisposition preconditions testData expectedResults passFailCriteria',
       plans:'name description phase status start end decisionId decision extKey regressionSystemId systemId',
@@ -157,6 +157,12 @@ const DataGuard = {
         identity(r,path);
         const fields=new Set((known[coll]||'').split(' ').concat('code'));
         for(const key of this.arrays[coll]||[])if(!Array.isArray(r[key]))this.fail(`${path}.${key}`,'expected an array');
+        // Optional flow-down links and class: validated when present, never defaulted.
+        if (coll==='requirements') {
+          if (r.derivedFromIds!==undefined && !Array.isArray(r.derivedFromIds)) this.fail(`${path}.derivedFromIds`,'expected an array');
+          if ((r.derivedFromIds||[]).includes(r.id)) this.fail(`${path}.derivedFromIds`,'a requirement cannot derive from itself');
+          if (r.reqClass!==undefined && !['System','PSPEC','SW'].includes(r.reqClass)) this.fail(`${path}.reqClass`,'unsupported requirement class');
+        }
         const requiredText={systems:['name'],components:['name'],requirements:['title'],cases:['title'],procedures:['title'],criteria:['text'],plans:['name'],risks:['title','description'],resources:['name'],decisions:['title'],events:['title'],defects:['title'],documents:['title']}[coll]||[];
         for(const key of requiredText)if(typeof r[key]!=='string'||!r[key].trim())this.fail(`${path}.${key}`,'required text is missing');
         for (const key of strings) if (fields.has(key) && r[key] !== undefined && !(coll === 'events' && key === 'notes') && typeof r[key] !== 'string') this.fail(`${path}.${key}`,'expected text');
@@ -193,7 +199,9 @@ const DataGuard = {
         if (coll === 'runs' && (!r.caseId || !r.date)) this.fail(path,'caseId and date are required');
         if (coll === 'criteria' && !db[r.parentType==='plan'?'plans':'procedures'].some(p=>p.id===r.parentId)) this.fail(path,'missing criterion parent');
         for (const step of coll==='procedures'?r.steps:[]) if (typeof step !== 'string') this.fail(`${path}.steps`,'expected text steps');
-        for (const link of ['cases','plans'].includes(coll)?r.extLinks:[]) if (!this.object(link) || typeof link.url !== 'string' || (link.label !== undefined && typeof link.label !== 'string')) this.fail(`${path}.extLinks`,'invalid link record');
+        // Defect links are optional: validated when present, never defaulted onto existing records.
+        if (coll==='defects' && r.extLinks!==undefined && !Array.isArray(r.extLinks)) this.fail(`${path}.extLinks`,'expected an array');
+        for (const link of ['cases','plans','defects'].includes(coll)?(r.extLinks||[]):[]) if (!this.object(link) || typeof link.url !== 'string' || (link.label !== undefined && typeof link.label !== 'string')) this.fail(`${path}.extLinks`,'invalid link record');
         for (const nested of coll==='risks'?r.mitigations:coll==='events'?r.notes:[]) {
           if (!this.object(nested)) this.fail(path,'invalid nested record');
           identity(nested,path);

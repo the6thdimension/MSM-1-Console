@@ -274,6 +274,70 @@ test('system scope filters lists by owner without changing computed status',asyn
   await S.command('delete system',()=>S.remove('systems','sys-2'));
   assert.equal(S.get('requirements','req-2').systemId,'','owned records become program-level, not deleted');h.DataGuard.validate(S.db);
 });
+test('requirement classes: own code series, flow-down, validation and one trace grid per class',async()=>{
+  const h=await ready(),S=h.Store;
+  assert.ok(S.all('requirements').every(r=>r.reqClass===undefined&&S.reqClass(r)==='System'),'absent class reads as System without a rewrite');
+  assert.equal(S.nextReqCode('PSPEC'),'PSPEC-001');assert.equal(S.nextReqCode('SW'),'SWR-001');
+  const sysCode=S.nextReqCode('System');assert.match(sysCode,/^REQ-/);
+  let p,w;
+  await S.command('add',()=>{
+    p=S.add('requirements',{title:'Bridge latency',text:'',type:'Performance',priority:'High',method:'Test',measure:'TPM',threshold:'',objective:'',componentIds:[],reqClass:'PSPEC',derivedFromIds:['req-1'],code:S.nextReqCode('PSPEC')});
+    w=S.add('requirements',{title:'Freeze handler',text:'',type:'Safety',priority:'High',method:'Test',measure:'CTP',threshold:'',objective:'',componentIds:[],reqClass:'SW',derivedFromIds:['req-1',p.id],code:S.nextReqCode('SW')});
+  });
+  assert.equal(p.code,'PSPEC-001');assert.equal(w.code,'SWR-001');
+  assert.equal(S.nextReqCode('PSPEC'),'PSPEC-002');assert.equal(S.nextReqCode('System'),sysCode,'class series do not consume system codes');
+  assert.deepEqual(copy(S.derivedChildren('req-1').map(r=>r.id).sort()),[p.id,w.id].sort());
+  assert.deepEqual(copy(S.derivedParents(w).map(r=>r.id)),['req-1',p.id]);
+  const bad=copy(S.db);bad.requirements.find(r=>r.id===p.id).derivedFromIds=[p.id];
+  assert.throws(()=>h.DataGuard.validate(bad),/cannot derive from itself/);
+  const bad2=copy(S.db);bad2.requirements.find(r=>r.id===p.id).reqClass='Hardware';
+  assert.throws(()=>h.DataGuard.validate(bad2),/unsupported requirement class/);
+  const bad3=copy(S.db);bad3.requirements.find(r=>r.id===p.id).derivedFromIds=['req-missing'];
+  assert.throws(()=>h.DataGuard.validate(bad3));
+  // register: one section per class, class filter, flow chips
+  const reg=h.Views.requirements(new URLSearchParams());
+  for(const c of ['system','pspec','sw'])assert.match(reg,new RegExp(`req-section cls-${c}`));
+  assert.match(reg,/flow-chip up/);
+  const only=h.Views.requirements(new URLSearchParams('class=SW'));
+  assert.match(only,/SWR-001/);assert.doesNotMatch(only,/req-section cls-pspec/);
+  // trace: one grid per class, columns limited to cases verifying that class
+  await S.command('link',()=>{const tc=S.get('cases','tc-1');S.update('cases','tc-1',{requirementIds:[...(tc.requirementIds||[]),p.id]});});
+  const tr=h.Views.trace(new URLSearchParams());
+  assert.equal([...tr.matchAll(/trace-grid-wrap cls-/g)].length,3);
+  const swGrid=tr.slice(tr.indexOf('trace-grid-wrap cls-sw'));
+  assert.match(swGrid,/no verifying test cases/,'uncovered class grid has no case columns');
+  const pGrid=tr.slice(tr.indexOf('trace-grid-wrap cls-pspec'),tr.indexOf('trace-grid-wrap cls-sw'));
+  assert.equal([...pGrid.matchAll(/class="tc-col"/g)].length,1,'PSPEC grid shows only its verifying case');
+  assert.match(pGrid,/↑ REQ-/);
+  assert.match(h.Views.requirementDetail('req-1'),/Requirement Flow-Down/);
+  // deleting a parent removes the flow-down link but keeps the child
+  await S.command('delete',()=>S.remove('requirements',p.id));
+  assert.deepEqual(copy(S.get('requirements',w.id).derivedFromIds),['req-1']);h.DataGuard.validate(S.db);
+});
+test('CSV interchange keeps requirement class: labels and trace columns out, PSPEC/SWR codes in',async()=>{
+  const h=await ready(),S=h.Store;
+  await S.command('import',()=>h.IO.importJiraRequirements('Summary,Description\n"PSPEC-077: Synthetic bridge jitter",The bridge shall bound jitter.\n"Plain synthetic requirement",x'));
+  const p=S.all('requirements').find(r=>r.title==='Synthetic bridge jitter'),q=S.all('requirements').find(r=>r.title==='Plain synthetic requirement');
+  assert.equal(p.reqClass,'PSPEC');assert.equal(p.code,'PSPEC-077');
+  assert.equal(q.reqClass,undefined);assert.match(q.code,/^REQ-/);
+  assert.equal(S.nextReqCode('PSPEC'),'PSPEC-078');
+  let csv='';h.IO.download=(_n,text)=>{csv=text;};
+  h.IO.exportTraceability();
+  assert.match(csv.split('\n')[0],/Coverage Rollup,Requirement Class,Derived From/);
+  assert.match(csv,/PSPEC-077,Synthetic bridge jitter.*,PSPEC,/);
+  h.IO.exportJiraRequirements();assert.match(csv,/PSPEC-077 Performance|PSPEC-077 Functional[^\n]*PSPEC/);
+});
+test('defects carry optional external links without defaulting existing records',async()=>{
+  const h=await ready(),S=h.Store;
+  assert.ok(S.all('defects').every(d=>d.extLinks===undefined),'fixture defects have no links and none are added');
+  await S.command('link',()=>S.update('defects','def-1',{extLinks:[{url:'https://example.test/browse/BUG-1',label:'Jira'}]}));
+  assert.match(h.Views.defectDetail('def-1'),/External Links — Jira \/ Zephyr \/ Share/);
+  assert.match(h.Views.defectDetail('def-1'),/BUG-1|Jira/);
+  const bad=copy(S.db);bad.defects[0].extLinks=[{label:'no url'}];
+  assert.throws(()=>h.DataGuard.validate(bad),/invalid link record/);
+  const bad2=copy(S.db);bad2.defects[0].extLinks='https://x';
+  assert.throws(()=>h.DataGuard.validate(bad2),/expected an array/);
+});
 test('runtime shell has no remote assets and disallows background connections',()=>{
   const html=fs.readFileSync(path.join(root,'index.html'),'utf8');assert.doesNotMatch(html,/(?:src|href)="https?:/);assert.match(html,/connect-src 'none'/);
   assert.doesNotMatch(fs.readFileSync(path.join(root,'js/views.js'),'utf8'),/fetch\(/);

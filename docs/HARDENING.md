@@ -85,6 +85,14 @@ during import; absent means program-level, so existing databases (including the
 independent copy) import unchanged and nothing is assigned until the user confirms
 on the Ownership page. A dangling owner reference is refused like any other.
 
+**Requirement classes and defect links.** `reqClass`, `derivedFromIds` and defect
+`extLinks` are optional and never added during import: an existing requirement with
+no class reads as a System requirement and keeps its code, and an existing defect
+with no links shows an empty links panel. When present they are validated (known
+class, existing non-self parents, array of `{url, label}` links). The per-class
+code counters live in `meta.seq` under new keys; older releases accept extra
+counter keys.
+
 Migration retains legacy `procedureId` and free-text `decision` fields. Defaults
 are added only when absent. Existing statuses and measurements are not rewritten
 during import. New runs add `recordedAt`; same-day historical runs without that
