@@ -1454,7 +1454,7 @@ tr.uncovered .req-col { box-shadow: inset 3px 0 0 var(--red); }
 a.flow-chip.up { color: var(--cls, var(--amber)); border-color: currentColor; }
 a.flow-chip:hover { text-decoration: none; filter: brightness(1.2); }
 .flow-label { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--ink-faint); margin-bottom: 6px; }
-td.bad, span.bad { color: var(--red); font-weight: 600; }
+td.bad, span.bad, dd.bad { color: var(--red); font-weight: 600; }
 .trace-grid-wrap .panel { border-top: 3px solid var(--cls, var(--amber)); }
 .trace-grid-wrap .panel-head h2 { color: var(--cls, var(--ink-dim)); }
 table.trace .req-parent { display: block; font-family: var(--mono); font-size: 9.5px; color: var(--ink-faint); margin-top: 2px; }
@@ -1757,3 +1757,14 @@ kbd {
 ::-webkit-scrollbar-track { background: var(--bg-0); }
 ::-webkit-scrollbar-thumb { background: var(--bg-3); border-radius: 5px; border: 2px solid var(--bg-0); }
 ::-webkit-scrollbar-thumb:hover { background: var(--line); }
+
+/* Backups & Files page */
+.state-lamp { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; background: var(--ink-faint); vertical-align: 1px; }
+.state-lamp.ok { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.state-lamp.warn { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+.state-lamp.bad { background: var(--red); box-shadow: 0 0 6px var(--red); }
+.meter-row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+.meter-row .meter { flex: 1; }
+.meter-row .meter > span { background: var(--green); }
+.meter-row .meter > span.warn { background: var(--amber); }
+.meter-row .meter > span.bad { background: var(--red); }

@@ -228,6 +228,37 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
     await page.reload();await page.waitForFunction(()=>!!Store.db && !!Store.get('systems','sys-2'));
     console.log('PASS cascade preview, cleanup and undo');
 
+    // Folder backups. A folder picker cannot be driven headless, and a file:// page has no
+    // private browser file system, so this check serves the same files from 127.0.0.1 in a
+    // separate session and lets the browser's private file system stand in for the folder.
+    // (The picker itself was checked to open from file:// in visible Chrome.)
+    {
+      const http=require('node:http');
+      const types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json'};
+      const server=http.createServer((req,res)=>{const f=path.join(root,decodeURIComponent(req.url.split('?')[0]));
+        if(!f.startsWith(root)||!fs.existsSync(f)||fs.statSync(f).isDirectory()){res.writeHead(404);res.end();return;}
+        res.writeHead(200,{'Content-Type':types[path.extname(f)]||'application/octet-stream'});fs.createReadStream(f).pipe(res);});
+      await new Promise(r=>server.listen(0,'127.0.0.1',r));
+      const local=await browser.newContext({viewport:{width:1440,height:1000}});
+      const bp=await local.newPage();bp.on('pageerror',e=>errors.push('backup page: '+e.message));
+      await bp.goto(`http://127.0.0.1:${server.address().port}/index.html`);await bp.waitForFunction(()=>!!Store.db&&!Store._tx);
+      await bp.evaluate(async()=>{Backup.DELAY=150;const root=await navigator.storage.getDirectory();await Backup.useFolder(await root.getDirectoryHandle('backup-test',{create:true}));});
+      await bp.evaluate(()=>Store.command('backup check',()=>Store.update('systems','sys-1',{description:'Backed up description'})));
+      const backupText=()=>bp.evaluate(async()=>{try{const dir=await (await navigator.storage.getDirectory()).getDirectoryHandle('backup-test');
+        const slug=Backup.slug(Store.db.meta.program);const read=async(d,n)=>(await (await d.getFileHandle(n)).getFile()).text();
+        return {latest:await read(dir,slug+'-latest.json'),daily:await read(await dir.getDirectoryHandle('daily'),`${slug}-${Backup.localDate()}.json`)};}catch(e){return null;}});
+      let files=null;for(let i=0;i<40&&!(files&&files.latest.includes('Backed up description'));i++){await bp.waitForTimeout(150);files=await backupText();}
+      assert.ok(files&&files.latest.includes('Backed up description'),'a save is copied to the backup folder');
+      assert.equal(files.daily,files.latest,'the daily copy matches');
+      assert.equal(files.latest,await bp.evaluate(()=>localStorage.getItem(DB_KEY)),'the backup is the saved program, byte for byte');
+      await bp.reload();await bp.waitForFunction(()=>!!Store.db&&Backup.status.state==='on');   // the folder is remembered
+      await bp.evaluate(h=>App.go(h),'#/storage');await bp.waitForFunction(()=>App._lastHash==='#/storage');
+      assert.match(await bp.locator('#view').textContent(),/On — backs up[^]*backup-test[^]*read back and verified/);
+      await bp.evaluate(()=>Backup.stop());
+      await local.close();server.close();
+    }
+    console.log('PASS folder backups: copy after save, daily copy, verified, resumes after reload');
+
     const tab=await context.newPage();await tab.goto(entry);await tab.waitForFunction(()=>!!Store.db);
     const goIn=async(p,hash)=>{await p.evaluate(h=>App.go(h),hash);await p.waitForFunction(h=>App._lastHash===h,hash);};
     const savedSys=id=>page.evaluate(id=>JSON.parse(localStorage.getItem(DB_KEY)).systems.find(s=>s.id===id),id);
@@ -268,7 +299,7 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
     await tab.close();await page.reload();await page.waitForFunction(()=>!!Store.db&&!Store._tx);
     console.log('PASS live multi-tab: instant refresh, saves on top, simultaneous saves, form merge and conflict prompt');
 
-    for(const route of ['dashboard','schedule','systems','requirements','cases','trace','idsk','procedures','plans','runs','defects','risks','resources','documents','interchange','sitrep','decisions/dec-1/report','testruns/tr-1','components/cmp-14','ownership','releases','releases/rel-1','builds/bld-9','runs/run-7','runs?group=build','documents/doc-4']) {
+    for(const route of ['dashboard','schedule','systems','requirements','cases','trace','idsk','procedures','plans','runs','defects','risks','resources','documents','interchange','sitrep','decisions/dec-1/report','testruns/tr-1','components/cmp-14','ownership','releases','releases/rel-1','builds/bld-9','runs/run-7','runs?group=build','documents/doc-4','storage']) {
       await go('#/'+route);
       assert.doesNotMatch(await page.locator('#view').textContent(),/Something went wrong rendering/);
     }

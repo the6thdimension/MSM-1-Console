@@ -60,6 +60,7 @@ const App = {
         case "schedule":    html = Views.schedule(params); break;
         case "events":      html = seg[1] ? Views.eventDetail(seg[1]) : Views.schedule(params); nav = "schedule"; break;
         case "interchange": html = Views.interchange(); break;
+        case "storage":     html = Views.storage(); break;
         case "ownership":   html = Views.ownership(params); break;
         case "releases":    html = seg[1] ? Views.releaseDetail(seg[1]) : Views.releases(params); break;
         case "builds":      html = seg[1] ? Views.buildDetail(seg[1], params) : Views.releases(params); nav = "releases"; break;
@@ -301,6 +302,16 @@ const App = {
     this.render();
     window.addEventListener('storage', e => { if (e.key === DB_KEY || e.key === null) this.externalChange(); });
     Commands.run('Daily snapshot',()=>Store.snapshotToday());
+    // Folder backups: every verified save in this tab schedules one.
+    Store.onCommit.push(() => Backup.schedule());
+    let lastError = '';
+    Backup.onChange(s => {
+      if (s.state === 'error' && s.error !== lastError) Toast.show(`Backup to “${s.folder}” failed: ${s.error}`, true);
+      lastError = s.state === 'error' ? s.error : '';
+    });
+    Backup.init().then(() => {
+      if (Backup.status.state === 'paused') Toast.show(`Backups to “${Backup.status.folder}” are paused until you reconnect the folder.`, true, { label: 'Reconnect', fn: () => Actions['backup-reconnect']() });
+    }).catch(err => console.error('Backup start-up', err));
   },
   /* Another tab saved: catch up and redraw. Open forms stay open (their save is merged);
      typing in a page field is never interrupted — the redraw waits until focus leaves it. */

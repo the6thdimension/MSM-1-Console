@@ -12,14 +12,14 @@ function scriptOrder(){return [...fs.readFileSync(path.join(root,'index.html'),'
 function harness(memory=new Map(),fail=()=>false) {
   const writes=[];
   let queue=Promise.resolve();
-  const ctx=vm.createContext({console,URL,URLSearchParams,Date,setTimeout,clearTimeout,
+  const ctx=vm.createContext({console,URL,URLSearchParams,Date,setTimeout,clearTimeout,Blob,File,Response,TextEncoder,crypto:globalThis.crypto,
     WriteFence:{commit:async(_key,_previous,_next,write)=>write()},
     document:{addEventListener(){}},window:{},
     navigator:{locks:{request:(_key,fn)=>{const pending=queue.then(fn);queue=pending.catch(()=>{});return pending;}}},
     localStorage:{getItem(k){if(fail('get',k))throw Error('read denied');return memory.get(k)??null;},setItem(k,v){if(fail('set',k))throw Error('quota exceeded');memory.set(k,v);writes.push(k);},removeItem(k){memory.delete(k);}}
   });
   for(const name of scriptOrder().filter(n=>!['fence','commands','app'].includes(n)))vm.runInContext(fs.readFileSync(path.join(root,'js',name+'.js'),'utf8'),ctx,{filename:name});
-  const api=vm.runInContext('({Store,DataGuard,IO,Views,Scope,safeHttp,externalLink})',ctx);
+  const api=vm.runInContext('({Store,DataGuard,IO,Views,Scope,safeHttp,externalLink,Folders,Backup})',ctx);
   return {...api,ctx,memory,writes,load:()=>api.Store.load()};
 }
 async function ready(fail=()=>false) {const h=harness(new Map([[KEY,JSON.stringify(fixture())]]),fail);h.load();return h;}
@@ -156,6 +156,48 @@ test('a form for a record another tab deleted is refused with a clear reason',as
   await a.command('Delete',()=>a.remove('documents',doc.id));
   await assert.rejects(b.command('Edit',()=>b.update('documents',doc.id,{title:'x'}),{base,subject:{coll:'documents',id:doc.id}}),new RegExp(`${doc.code} was deleted in another tab`));
   assert.ok(!saved().documents.some(d=>d.id===doc.id));
+});
+/* An in-memory stand-in for a folder the person picked (FileSystemDirectoryHandle). Holds bytes. */
+function fakeDir(name='Backups',{truncate=false}={}){
+  const files=new Map(),dirs=new Map();
+  const bytes=async d=>typeof d==='string'?Buffer.from(d,'utf8'):d&&typeof d.arrayBuffer==='function'?Buffer.from(await d.arrayBuffer()):Buffer.from(d.buffer?new Uint8Array(d.buffer,d.byteOffset,d.byteLength):d);
+  return {kind:'directory',name,files,dirs,
+    text:n=>files.get(n).toString('utf8'),
+    async getDirectoryHandle(n,{create}={}){if(!dirs.has(n)){if(!create)throw Object.assign(new Error(n+' not found'),{name:'NotFoundError'});dirs.set(n,fakeDir(n,{truncate}));}return dirs.get(n);},
+    async getFileHandle(n,{create}={}){if(!files.has(n)){if(!create)throw Object.assign(new Error(n+' not found'),{name:'NotFoundError'});files.set(n,Buffer.alloc(0));}
+      return {kind:'file',name:n,async createWritable(){let parts=[];return {async write(d){parts.push(await bytes(d));},async close(){const b=Buffer.concat(parts);files.set(n,truncate?b.subarray(0,10):b);}};},
+        async getFile(){return new Blob([files.get(n)]);}};},
+    async *entries(){for(const n of files.keys())yield [n,{kind:'file'}];for(const [n,d] of dirs)yield [n,d];},
+    async removeEntry(n){files.delete(n);},
+    async queryPermission(){return 'granted';}};
+}
+test('folder backups: latest and daily copies, read back, newest 30 kept, other files untouched',async()=>{
+  const h=await ready(),{Backup,Store:S}=h;
+  const dir=fakeDir();
+  const slug=Backup.slug(S.db.meta.program);
+  const daily=await dir.getDirectoryHandle('daily',{create:true});
+  for(let d=1;d<=32;d++)daily.files.set(`${slug}-2020-01-${String(d).padStart(2,'0')}.json`,Buffer.from('{}'));
+  daily.files.set('notes.txt',Buffer.from('mine'));daily.files.set('other-program-2020-01-01.json',Buffer.from('{}'));
+  // nothing saved yet in this harness: back up the stored program
+  h.memory.set(KEY,JSON.stringify(fixture()));
+  assert.equal(await Backup.useFolder(dir),true);
+  const raw=h.memory.get(KEY);
+  assert.equal(dir.text(`${slug}-latest.json`),raw,'latest copy is the stored program, byte for byte');
+  assert.equal(daily.text(`${slug}-${Backup.localDate()}.json`),raw);
+  const kept=[...daily.files.keys()].filter(n=>n.startsWith(slug+'-')).sort();
+  assert.equal(kept.length,30);assert.equal(kept.at(-1),`${slug}-${Backup.localDate()}.json`);assert.ok(!kept.includes(`${slug}-2020-01-01.json`),'oldest dropped');
+  assert.ok(daily.files.has('notes.txt')&&daily.files.has('other-program-2020-01-01.json'),'files the app did not name are untouched');
+  assert.equal(Backup.status.state,'on');assert.equal(Backup.status.last.bytes,Buffer.byteLength(raw));
+  h.Store.prepareImport(dir.text(`${slug}-latest.json`));   // importable as-is
+  // a write that does not land completely is reported, not claimed
+  const bad=fakeDir('Bad',{truncate:true});
+  assert.equal(await Backup.useFolder(bad),false);assert.equal(Backup.status.state,'error');assert.match(Backup.status.error,/not written completely/);
+});
+test('every verified save notifies commit listeners; a save that changes nothing does not',async()=>{
+  const h=await ready();let calls=0;h.Store.onCommit.push(()=>calls++);
+  await h.Store.command('edit',()=>h.Store.update('systems','sys-1',{name:'Hooked'}));
+  await h.Store.command('nothing',()=>{});
+  assert.equal(calls,1);
 });
 test('three-way merge rules',()=>{
   const h=harness(),M=vm.runInContext('Merge',h.ctx);

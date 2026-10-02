@@ -30,6 +30,8 @@ const Store = {
   _committed: null,
   _tx: null,
   failedDraft: null,
+  /* Called after every verified save in this tab (e.g. Backup.schedule). */
+  onCommit: [],
   stage(fn) {
     const db=this.db, tx=this._tx, undo=this.undoStack.slice();
     try {
@@ -94,6 +96,7 @@ const Store = {
         if (!tx.replacement) this.auditChanges(JSON.parse(before), label);
         else this.db.audit.push({ts:new Date().toISOString(),coll:'database',entityId:'database',code:'',action:'replaced',summary:label+'; previous active bytes retained in recovery storage'});
         await this.persist();
+        for (const hook of this.onCommit) { try { hook(); } catch (err) { console.error(err); } }
       }
       // An undo point taken during this command records the state it produced.
       for (const entry of this.undoStack) if (entry.after === null) entry.after = this._committed;
