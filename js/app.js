@@ -257,8 +257,11 @@ const App = {
       const file = t.files[0];
       t.value = "";
       if (!file) return;
+      // With an evidence folder, any size: the file is copied there on Add.
+      if (Evidence.status.state !== "off") { openDocModal(null, { name: file.name, size: file.size, type: file.type, file, toFolder: true }); return; }
       if (file.size > DOC_MAX_BYTES) {
-        Toast.show(`File is ${fmtBytes(file.size)} — embedded files are capped at ${fmtBytes(DOC_MAX_BYTES)}. Add it as a link instead.`, true);
+        Toast.show(`File is ${fmtBytes(file.size)} — files kept in the browser are capped at ${fmtBytes(DOC_MAX_BYTES)}. Set an evidence folder to keep files of any size on disk.`, true,
+          { label: "Set up", fn: () => App.go("#/storage") });
         return;
       }
       const reader = new FileReader();
@@ -309,6 +312,8 @@ const App = {
       if (s.state === 'error' && s.error !== lastError) Toast.show(`Backup to “${s.folder}” failed: ${s.error}`, true);
       lastError = s.state === 'error' ? s.error : '';
     });
+    Evidence.onChange(() => { if (/^#\/(storage|documents)/.test(location.hash || "")) this.render(); });
+    Evidence.init().catch(err => console.error('Evidence folder start-up', err));
     Backup.init().then(() => {
       if (Backup.status.state === 'paused') Toast.show(`Backups to “${Backup.status.folder}” are paused until you reconnect the folder.`, true, { label: 'Reconnect', fn: () => Actions['backup-reconnect']() });
     }).catch(err => console.error('Backup start-up', err));

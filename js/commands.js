@@ -21,7 +21,7 @@ const Commands = {
         obj[name]=function(...args) { return Store.effect(()=>original.apply(this,args)); };
       }
     }
-    const immediate = new Set(['export-data','export-recovery','export-draft','import-data','imp-jira','imp-zephyr','exp-jira-req','exp-trace','exp-zephyr','doc-download','add-doc-upload','print-page','matrix-cell','matrix-clear','toggle-closed','trace-gaps','trace-jump','backup-choose','backup-now','backup-reconnect','scope-to','scope-shared-toggle']);
+    const immediate = new Set(['export-data','export-recovery','export-draft','import-data','imp-jira','imp-zephyr','exp-jira-req','exp-trace','exp-zephyr','doc-download','add-doc-upload','print-page','matrix-cell','matrix-clear','toggle-closed','trace-gaps','trace-jump','backup-choose','backup-now','backup-reconnect','doc-open','doc-save-copy','doc-check','doc-check-all','doc-to-folder','evidence-choose','evidence-reconnect','evidence-move-all','scope-to','scope-shared-toggle']);
     for (const [name, fn] of Object.entries(Actions)) {
       if (immediate.has(name)) continue;
       Actions[name]=(id,el)=>this.run(name,()=> {

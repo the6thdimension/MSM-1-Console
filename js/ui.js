@@ -181,7 +181,9 @@ function toastUndo(msg) {
 const Modal = {
   close() { document.getElementById("modal-root").innerHTML = ""; },
 
-  open(title, fields, values, onSubmit, submitLabel) {
+  /* opts.prepare(out): optional async step run on submit before the save (e.g. copying a
+     file to the evidence folder); it may add to `out`. If it throws, nothing is saved. */
+  open(title, fields, values, onSubmit, submitLabel, opts = {}) {
     values = values || {};
     const root = document.getElementById("modal-root");
     const fieldHtml = fields.map(f => {
@@ -258,6 +260,12 @@ const Modal = {
       const submit = form.querySelector('[type="submit"]');
       if (submit.disabled) return;
       submit.disabled = true;
+      if (opts.prepare) {
+        const label = submit.textContent; submit.textContent = "Working…";
+        try { await opts.prepare(out); }
+        catch (err) { Toast.show(err.message || String(err), true); submit.disabled = false; submit.textContent = label; return; }
+        submit.textContent = label;
+      }
       for (const input of form.querySelectorAll(".merge-box input:checked")) {
         const c = input._conflict; resolutions[c.key] = { choice: input.value, theirs: c.theirs };
       }

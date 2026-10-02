@@ -134,7 +134,7 @@ const DataGuard = {
         codes.add(r.code);
       }
     };
-    const strings = ['code','name','title','description','text','objective','threshold','measure','method','type','priority','status','phase','date','start','end','operator','result','measured','evidence','notes','extKey','venue','testType','owner','authority','intendedUse','accDate','accScope','opened','closed','category','docType','url','fileName','fileType','dataUrl','relatedCodes','added','decision','reviewDisposition','preconditions','testData','expectedResults','passFailCriteria','createdAt','startedAt','completedAt','team','lead','reqClass','label','received','targetDate','releasedDate','fixVersion','cycle'];
+    const strings = ['code','name','title','description','text','objective','threshold','measure','method','type','priority','status','phase','date','start','end','operator','result','measured','evidence','notes','extKey','venue','testType','owner','authority','intendedUse','accDate','accScope','opened','closed','category','docType','url','fileName','fileType','dataUrl','relatedCodes','added','decision','reviewDisposition','preconditions','testData','expectedResults','passFailCriteria','createdAt','startedAt','completedAt','team','lead','reqClass','label','received','targetDate','releasedDate','fixVersion','cycle','evidencePath','fileSha256'];
     const known = {
       systems:'name description team lead', components:'systemId parentComponentId name description',
       requirements:'title text type priority method measure threshold objective extKey systemId reqClass',
@@ -147,7 +147,7 @@ const DataGuard = {
       risks:'title description category status owner likelihood impact initialLikelihood initialImpact residualLikelihood residualImpact systemId',
       resources:'name type description vvaRequired intendedUse owner authority verification validation accreditation accDate accScope artifacts systemId',
       decisions:'title description status date authority systemId', events:'title description type status start end location planId decisionId systemId',
-      documents:'title docType description url fileName fileSize fileType dataUrl relatedCodes added systemId',
+      documents:'title docType description url fileName fileSize fileType dataUrl relatedCodes added systemId evidencePath fileSha256',
       releases:'name description status targetDate releasedDate systemId decisionId fixVersion',
       builds:'label description status received systemId releaseId url cycle'
     };
@@ -228,6 +228,13 @@ const DataGuard = {
           if (r.fileSize !== undefined && r.fileSize !== bytes) this.fail(path,'embedded file size does not match content');
         }
         if(coll==='documents' && r.fileSize!==undefined&&(!Number.isSafeInteger(r.fileSize)||r.fileSize<0))this.fail(`${path}.fileSize`,'invalid file size');
+        // A file kept in the evidence folder: a relative path inside that folder and the
+        // file's SHA-256. Optional, validated when present, never defaulted.
+        if (coll==='documents' && r.evidencePath) {
+          if (/^[\\/]|^[A-Za-z]:|(^|[\\/])\.\.([\\/]|$)/.test(r.evidencePath) || r.evidencePath.length > 400) this.fail(`${path}.evidencePath`,'must be a path inside the evidence folder');
+          if (r.dataUrl) this.fail(path,'a document is either embedded or in the evidence folder, not both');
+        }
+        if (coll==='documents' && r.fileSha256 && !/^[0-9a-f]{64}$/.test(r.fileSha256)) this.fail(`${path}.fileSha256`,'expected a SHA-256 hex fingerprint');
       }
     }
     if (typeof db.meta.program !== 'string') this.fail('meta.program','expected text');

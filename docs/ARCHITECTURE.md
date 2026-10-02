@@ -55,6 +55,8 @@ flowchart TD
   Store -->|form saved after another tab saved| Merge[merge.js: three-way merge]
   Store -->|onCommit after each verified save| Backup[backup.js: folder backups]
   Backup --> Folders[folders.js: picked folders]
+  Actions -->|Add File / Open / Check| Evidence[evidence.js: evidence folder]
+  Evidence --> Folders
   Folders <--> Disk[(Folders on disk: backups, evidence)]
   Folders <--> FolderPrefs[(IndexedDB: chosen folders, last backup)]
   Storage -->|storage event: another tab saved| Boot

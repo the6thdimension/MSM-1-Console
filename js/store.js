@@ -311,6 +311,13 @@ const Store = {
     return all.some(e=>e.id===id) ? this.nextId(coll) : id;
   },
 
+  /* The code nextCode would assign now, without taking it. */
+  peekCode(coll) {
+    let n = (this.db.meta.seq[coll] || 0) + 1;
+    while (this.all(coll).some(e=>e.code===CODE_PREFIX[coll]+'-'+String(n).padStart(CODE_PAD[coll]||3,'0'))) n++;
+    return `${CODE_PREFIX[coll]}-${String(n).padStart(CODE_PAD[coll] || 3, "0")}`;
+  },
+
   nextCode(coll) {
     let n = (this.db.meta.seq[coll] || 0) + 1;
     while (this.all(coll).some(e=>e.code===CODE_PREFIX[coll]+'-'+String(n).padStart(CODE_PAD[coll]||3,'0'))) n++;

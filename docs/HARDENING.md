@@ -38,7 +38,9 @@ The data format remains the raw JSON database with the existing IDs and
 The recovery key is **not** a permanent independent backup. It consumes browser
 quota and can be lost along with all other browser site data. Keep full JSON
 exports and the original application in the user's controlled storage before
-upgrading. Linked evidence files still need their own preservation.
+upgrading. Linked evidence files still need their own preservation. Optional folder
+backups write the same JSON after every save and read each file back; files in the
+evidence folder carry a SHA-256 fingerprint so a missing or edited file is reported.
 
 A write-journal failure after a local write attempts to restore the previous
 active bytes. An abrupt process/power failure between the two storage systems may

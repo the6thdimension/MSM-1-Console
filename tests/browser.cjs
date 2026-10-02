@@ -255,9 +255,41 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
       await bp.evaluate(h=>App.go(h),'#/storage');await bp.waitForFunction(()=>App._lastHash==='#/storage');
       assert.match(await bp.locator('#view').textContent(),/On — backs up[^]*backup-test[^]*read back and verified/);
       await bp.evaluate(()=>Backup.stop());
+      console.log('PASS folder backups: copy after save, daily copy, verified, resumes after reload');
+
+      // Evidence folder: a 3 MB file (over the 2 MB browser cap) is copied to disk, not embedded.
+      const readDisk=p=>bp.evaluate(async p=>{const root=await (await navigator.storage.getDirectory()).getDirectoryHandle('evidence-test');const [sub,name]=p.split('/');
+        const f=await (await (await root.getDirectoryHandle(sub)).getFileHandle(name)).getFile();return Array.from(new Uint8Array(await f.arrayBuffer()));},p);
+      await bp.evaluate(async()=>{const root=await navigator.storage.getDirectory();await Evidence.useFolder(await root.getDirectoryHandle('evidence-test',{create:true}));});
+      await bp.evaluate(h=>App.go(h),'#/documents');await bp.waitForFunction(()=>App._lastHash==='#/documents');
+      const big=Buffer.alloc(3*1024*1024);for(let i=0;i<big.length;i+=997)big[i]=(i*7)%256;
+      await bp.locator('#doc-file').setInputFiles({name:'Big Telemetry.bin',mimeType:'application/octet-stream',buffer:big});
+      await bp.locator('#modal-form').waitFor();
+      assert.match(await bp.locator('.modal-head h2').textContent(),/→ evidence folder/);
+      await bp.locator('#modal-form [type="submit"]').click();
+      await bp.waitForFunction(()=>Store.all('documents').some(d=>d.fileName==='Big Telemetry.bin'));
+      const doc=await bp.evaluate(()=>Store.all('documents').find(d=>d.fileName==='Big Telemetry.bin'));
+      assert.equal(doc.dataUrl,'');assert.equal(doc.fileSize,big.length);assert.equal(doc.evidencePath,`${doc.code}/Big Telemetry.bin`);
+      assert.equal(doc.fileSha256,require('node:crypto').createHash('sha256').update(big).digest('hex'));
+      assert.ok(Buffer.from(await readDisk(doc.evidencePath)).equals(big),'the file on disk is byte for byte the one added');
+      assert.ok((await bp.evaluate(()=>localStorage.getItem(DB_KEY).length))<2*1024*1024,'the file did not go into browser storage');
+      await bp.evaluate(h=>App.go(h),`#/documents/${doc.id}`);await bp.locator('#view',{hasText:'Present and unchanged'}).waitFor();
+      // an edit outside the console is noticed
+      await bp.evaluate(async p=>{const root=await (await navigator.storage.getDirectory()).getDirectoryHandle('evidence-test');const [sub,name]=p.split('/');
+        const w=await (await (await root.getDirectoryHandle(sub)).getFileHandle(name)).createWritable();await w.write('edited outside the console');await w.close();},doc.evidencePath);
+      await bp.locator('[data-act="doc-check"]').click();await bp.locator('#view',{hasText:'no longer matches'}).waitFor();
+      // an embedded file moves to the folder and leaves browser storage
+      const small=Buffer.from('embedded synthetic evidence éÿ');
+      const emb=await bp.evaluate(async b64=>{let d;await Store.command('embed',()=>{d=Store.add('documents',{title:'Embedded synthetic',docType:'Evidence',url:'',relatedCodes:'',added:'2026-10-01',description:'',fileName:'note.txt',fileSize:atob(b64).length,fileType:'text/plain',dataUrl:'data:text/plain;base64,'+b64});});return d;},small.toString('base64'));
+      await bp.evaluate(h=>App.go(h),`#/documents/${emb.id}`);await bp.waitForFunction(h=>App._lastHash===h,`#/documents/${emb.id}`);
+      await bp.locator('[data-act="doc-to-folder"]').click();
+      await bp.waitForFunction(id=>{const d=Store.get('documents',id);return d.evidencePath&&!d.dataUrl;},emb.id);
+      const moved=await bp.evaluate(id=>Store.get('documents',id),emb.id);
+      assert.equal(moved.evidencePath,`${emb.code}/note.txt`);assert.equal(moved.fileSize,small.length);
+      assert.ok(Buffer.from(await readDisk(moved.evidencePath)).equals(small),'moved bytes are exact');
       await local.close();server.close();
     }
-    console.log('PASS folder backups: copy after save, daily copy, verified, resumes after reload');
+    console.log('PASS evidence folder: 3 MB file copied to disk with fingerprint, outside edit noticed, embedded file moved out');
 
     const tab=await context.newPage();await tab.goto(entry);await tab.waitForFunction(()=>!!Store.db);
     const goIn=async(p,hash)=>{await p.evaluate(h=>App.go(h),hash);await p.waitForFunction(h=>App._lastHash===h,hash);};

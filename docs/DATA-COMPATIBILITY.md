@@ -29,7 +29,9 @@ This remains the release contract. [HARDENING.md](HARDENING.md) identifies imple
   It is tested with a synthetic fixture derived from its schema skeleton, not its
   data; see [Hardening](HARDENING.md) for the value-level rules still unverified.
 - JSON import replaces the active database. CSV only transfers selected fields.
-- Linked evidence files are not included in JSON unless embedded in documents.
+- Linked evidence files are not included in JSON unless embedded in documents. Files in
+  the evidence folder are referenced by `evidencePath` and `fileSha256` (optional
+  document fields, never added on import); the folder must travel with the JSON.
 - Different file locations or browser profiles may expose different storage.
   Conversely, opening another release may share storage and immediately migrate
   it. A separate folder alone is not reliable isolation.

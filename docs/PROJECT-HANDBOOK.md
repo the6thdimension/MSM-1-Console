@@ -76,6 +76,7 @@ a test run brings its row back into view. Navigating to a new page starts at the
 | `js/fence.js` | Shared IndexedDB fingerprint journal: waits for another tab's save to arrive before a save, and rejects a stale writer if it never does |
 | `js/folders.js` | `Folders`: folders on disk chosen through the browser's picker (Chrome / Edge), remembered in IndexedDB by role (`backup`, `evidence`) outside the program data; permission check and request; write-and-verify |
 | `js/backup.js` | `Backup`: automatic copies of the program in the backup folder after each save (`<program>-latest.json`, `daily/<program>-YYYY-MM-DD.json`, newest 30 daily copies kept) |
+| `js/evidence.js` | `Evidence`: attachments copied into the evidence folder by document code, SHA-256 fingerprint, present / missing / changed checks |
 | `js/commands.js` | UI command boundary, previews, deferred effects and error handling |
 | `js/store.js` | `Store`: persistence, migrations, IDs, CRUD, relationships, derived status, search, audit, undo, snapshots |
 | `js/io.js` | `IO`: CSV parser/writer, Jira and Zephyr conversions, browser file downloads |
@@ -129,7 +130,7 @@ The tables below describe the application's known fields, not a strict schema.
 | `resources` | `id`, `code`, `name`, `type`, `description`, `vvaRequired`, `intendedUse`, `owner`, `authority`, `verification`, `validation`, `accreditation`, `accDate`, `accScope`, `artifacts` booleans |
 | `decisions` | `id`, `code`, `title`, `description`, `status`, `date`, `authority`, `requirementIds[]` |
 | `events` | `id`, `code`, `title`, `description`, `type`, `status`, `start`, `end`, `location`, `planId`, `decisionId`, nested `notes[]` |
-| `documents` | `id`, `code`, `title`, `docType`, `description`, `url`, `fileName`, `fileSize`, `fileType`, `dataUrl`, `relatedCodes`, `added` |
+| `documents` | `id`, `code`, `title`, `docType`, `description`, `url`, `fileName`, `fileSize`, `fileType`, `dataUrl`, `relatedCodes`, `added`; optional `evidencePath` (path inside the evidence folder, e.g. `DOC-07/report.pdf`) and `fileSha256` (hex fingerprint) for a file kept on disk — never added to existing records; a document is either embedded (`dataUrl`) or in the folder, not both |
 | `snapshots` | Daily `date`, `pass`, `fail`, `other`, `verified`, `reqTotal`, `defOpen`; no automatic pruning |
 | `audit` | `ts`, `coll`, `entityId`, `code`, `action`, `summary`; no automatic pruning |
 
@@ -168,7 +169,7 @@ Compatibility must retain both forms and validate counters against actual record
 | `#/idsk`, `#/decisions/:id` | Decisions, informing requirements and plans, evidence readiness |
 | `#/schedule?zoom=`, `#/events/:id` | Campaign Overview: a Program row for events not tied to a plan, then one row per plan (name and status at left, labeled bar for its window). Shape encodes event type (● event, ▲ milestone, ◆ decision point), a thin bar marks a multi-day event, green fill = complete, faded = cancelled; milestones and decision points carry visible labels. Zoom: whole program (default), ±90 days around today, or this calendar quarter; bars cut by the window get a dashed edge and items outside are counted. All positions come from one UTC-day scale (`ganttScale`). The Program row (events not tied to a plan) is always the first row, above the test-plan rows. Below the chart the dated list has two sections: **Upcoming** (any event whose last day is today or later, plus undated ones; soonest first; events already running are marked "happening now") and **Past** underneath (most recent first; a past event still Planned or In Progress is flagged "past due — update status") |
 | `#/documents`, `#/documents/:id` | External references and embedded files, related-code links. Each document has a page: attachment (download, web link, or a share path shown as text with a note that it opens from your own file browser), description, related records, a preview of embedded plain-text files, change log |
-| `#/storage` | **Backups & Files.** Automatic backups: choose a folder once; a few seconds after each save the program is written there as `<program>-latest.json` and `daily/<program>-YYYY-MM-DD.json` (the day's last state; newest 30 daily copies kept, older ones made by the console removed, other files never touched); each file is read back and size-checked; status, last backup, Back up now, Change folder, Stop. Browser storage meter. After a browser restart the browser may ask again: a Reconnect button (and a start-up notice for backups) resumes with one click |
+| `#/storage` | **Backups & Files.** Automatic backups: choose a folder once; a few seconds after each save the program is written there as `<program>-latest.json` and `daily/<program>-YYYY-MM-DD.json` (the day's last state; newest 30 daily copies kept, older ones made by the console removed, other files never touched); each file is read back and size-checked; status, last backup, Back up now, Change folder, Stop. Evidence folder: choose, reconnect, check all files, move embedded files out of browser storage, disconnect. Browser storage meter. After a browser restart the browser may ask again: a Reconnect button (and a start-up notice for backups) resumes with one click |
 | `#/interchange` | CSV conversions, full JSON transfer, Jira URL setting, blank program (always whole-program, regardless of scope) |
 | `#/ownership` | Ownership overview per system; program-level records with reviewed owner suggestions; assign selected or accept suggestions |
 | `#/releases`, `#/releases/:id`, `#/builds/:id` | Per system: current build, releases (status, target, latest build, decision, Jira Fix Version) and the build stream with how many active cases have a result on each build. A **release page is its readiness view**: release candidate, cases run on it (pass/fail), results carried forward from older builds, never-run cases, a per-case table, requirement rollup with the requirements verified only by older-build results, release exit criteria, open defects of the system with their builds, and the margin between the target date and the linked decision. A build page shows results on that build, a **comparison with another build** (default: the previous non-rejected one; `?vs=` picks another) listing regressed, fixed, still failing, not re-run and new cases, defects fixed in it, what has not been run on it yet, change notes, sessions run against it, and links to the newer and older builds. System pages carry a Releases & Builds panel; system cards show the current build |
@@ -326,6 +327,22 @@ label; the traceability CSV appends `Requirement Class` and `Derived From` colum
 after the existing ones. Zephyr matches key then TC label. Ambiguous matches stop and
 absent columns preserve existing fields. CSV does not reconstruct every trace
 label or replace existing procedure steps.
+
+**Folder backups and the evidence folder (Chrome / Edge).** Browser storage remains the
+working copy. A backup folder chosen on the Backups & Files page receives the whole
+program (the same JSON Export produces and Import accepts) after every save in the tab
+that saved; restore is Import JSON from that folder. With an evidence folder set, Add
+File on the Documents page copies the file (any size) to `<folder>/<DOC code>/<name>`
+before the document is saved, verifies it by SHA-256, and stores only the reference; a
+same-named different file gets ` (2)`; the console never deletes or overwrites a file in
+that folder (deleting a document leaves its file). Opening a document page checks its
+file; Open and Save a copy read from the folder. Move to evidence folder converts an
+embedded file (verified before the embedded copy is dropped). Backups and exports carry
+references only, so keep the evidence folder on a backed-up drive or share. Folder
+choices are per browser profile and live outside the program data. The folder picker was
+confirmed to open from `file://` in Chrome; automated tests exercise reading and
+writing through the same browser API against the browser's private file system on
+127.0.0.1, because a picker cannot be driven by a test.
 
 Embedded documents retain the 2 MiB upload cap, but total available quota depends
 on the browser, whole database and recovery copy. The storage estimate is

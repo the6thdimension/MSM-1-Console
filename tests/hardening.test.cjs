@@ -19,7 +19,7 @@ function harness(memory=new Map(),fail=()=>false) {
     localStorage:{getItem(k){if(fail('get',k))throw Error('read denied');return memory.get(k)??null;},setItem(k,v){if(fail('set',k))throw Error('quota exceeded');memory.set(k,v);writes.push(k);},removeItem(k){memory.delete(k);}}
   });
   for(const name of scriptOrder().filter(n=>!['fence','commands','app'].includes(n)))vm.runInContext(fs.readFileSync(path.join(root,'js',name+'.js'),'utf8'),ctx,{filename:name});
-  const api=vm.runInContext('({Store,DataGuard,IO,Views,Scope,safeHttp,externalLink,Folders,Backup})',ctx);
+  const api=vm.runInContext('({Store,DataGuard,IO,Views,Scope,safeHttp,externalLink,Folders,Backup,Evidence})',ctx);
   return {...api,ctx,memory,writes,load:()=>api.Store.load()};
 }
 async function ready(fail=()=>false) {const h=harness(new Map([[KEY,JSON.stringify(fixture())]]),fail);h.load();return h;}
@@ -192,6 +192,39 @@ test('folder backups: latest and daily copies, read back, newest 30 kept, other 
   // a write that does not land completely is reported, not claimed
   const bad=fakeDir('Bad',{truncate:true});
   assert.equal(await Backup.useFolder(bad),false);assert.equal(Backup.status.state,'error');assert.match(Backup.status.error,/not written completely/);
+});
+test('evidence folder: files copied by document code, verified by fingerprint, never overwritten',async()=>{
+  const h=await ready(),{Evidence,Store:S}=h,dir=fakeDir('Evidence');
+  await Evidence.useFolder(dir);
+  const sha=b=>require('node:crypto').createHash('sha256').update(b).digest('hex');
+  const pdf=Buffer.from([0x25,0x50,0x44,0x46,0x00,0xff,0x80,0x7f,0x0a,0xc3,0x28]);   // binary, not text
+  const code=S.peekCode('documents');
+  const rec=await Evidence.store(new File([pdf],'Test Report.pdf',{type:'application/pdf'}),code);
+  assert.deepEqual(copy(rec),{evidencePath:`${code}/Test Report.pdf`,fileName:'Test Report.pdf',fileSize:pdf.length,fileType:'application/pdf',fileSha256:sha(pdf),dataUrl:''});
+  assert.ok(dir.dirs.get(code).files.get('Test Report.pdf').equals(pdf),'bytes copied exactly');
+  // the same content again reuses the copy; different content never replaces it
+  assert.equal((await Evidence.store(new File([pdf],'Test Report.pdf'),code)).evidencePath,`${code}/Test Report.pdf`);
+  const other=Buffer.from('a different file');
+  assert.equal((await Evidence.store(new File([other],'Test Report.pdf'),code)).evidencePath,`${code}/Test Report (2).pdf`);
+  assert.ok(dir.dirs.get(code).files.get('Test Report.pdf').equals(pdf),'existing file untouched');
+  assert.equal(Evidence.safeName('a:b?<c>.txt'),'a_b__c_.txt');assert.equal(Evidence.safeName('CON.txt'),'_CON.txt');
+  // the record saves and validates; the page shows an Open button and the path
+  let d;await S.command('add',()=>{d=S.add('documents',Object.assign({title:'Synthetic report',docType:'Report',url:'',relatedCodes:'',added:'2026-10-01',description:''},copy(rec)));});
+  assert.equal(d.code,code);
+  assert.match(h.Views.documents(new URLSearchParams()),/data-act="doc-open"/);
+  assert.ok(h.Views.documentDetail(d.id).includes(`${code}/Test Report.pdf`));
+  // checks: present, edited, missing
+  assert.equal(await Evidence.check(d),'ok');
+  dir.dirs.get(code).files.set('Test Report.pdf',Buffer.from('edited outside'));assert.equal(await Evidence.check(d),'changed');
+  dir.dirs.get(code).files.delete('Test Report.pdf');assert.equal(await Evidence.check(d),'missing');
+  // validation: a path must stay inside the folder; embedded and folder are exclusive; fingerprints are hex
+  for(const [patch,msg] of [[{evidencePath:'../outside.pdf'},/inside the evidence folder/],[{evidencePath:'C:\\x.pdf'},/inside the evidence folder/],[{evidencePath:'/x.pdf'},/inside the evidence folder/],
+    [{evidencePath:'a/..\\b'},/inside the evidence folder/],[{fileSha256:'XYZ'},/SHA-256/]]){
+    const bad=copy(S.db);Object.assign(bad.documents.find(x=>x.id===d.id),patch);assert.throws(()=>h.DataGuard.validate(bad),msg);
+  }
+  const both=copy(S.db);Object.assign(both.documents.find(x=>x.id===d.id),{dataUrl:'data:text/plain;base64,QQ==',fileSize:1});assert.throws(()=>h.DataGuard.validate(both),/not both/);
+  // old documents without these fields are untouched by import
+  const plain=fixture();h.DataGuard.validate(h.DataGuard.normalize(plain).db);assert.ok(plain.documents.every(x=>x.evidencePath===undefined));
 });
 test('every verified save notifies commit listeners; a save that changes nothing does not',async()=>{
   const h=await ready();let calls=0;h.Store.onCommit.push(()=>calls++);
