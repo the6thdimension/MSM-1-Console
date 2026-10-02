@@ -8,6 +8,7 @@ See [the hardening report](docs/HARDENING.md) for recovery, compatibility and br
 
 ## Maintainer documentation
 
+- [Handoff](HANDOFF.md) — current state, hard-won findings, verdict ledger and next steps; read first when picking the project back up.
 - [Project handbook](docs/PROJECT-HANDBOOK.md) — purpose, source map, data model, workflows, exact status rules, and limitations.
 - [Architecture drawings](docs/ARCHITECTURE.md) — runtime, relationships, execution, and offline migration diagrams.
 - [Data compatibility contract](docs/DATA-COMPATIBILITY.md) — independent sensitive-data installations, safe upgrades, preservation rules, and release gates.
