@@ -6,16 +6,36 @@ const WriteFence = {
     const digest=await crypto.subtle.digest('SHA-256',bytes);
     return Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');
   },
-  async commit(key, previous, next, write, rollback) {
-    if(!globalThis.indexedDB || !globalThis.crypto?.subtle)throw new Error('Safe writes require IndexedDB and Web Crypto. Export your data and use a supported browser.');
-    const [expected,hash]=await Promise.all([this.fingerprint(previous),this.fingerprint(next)]);
-    const db=await new Promise((resolve,reject)=>{
+  open() {
+    return new Promise((resolve,reject)=>{
       const request=indexedDB.open('msm-te-write-fence',1);
       request.onupgradeneeded=()=>request.result.createObjectStore('heads');
       request.onsuccess=()=>resolve(request.result);
       request.onerror=()=>reject(new Error('Cannot open the write journal; database unchanged.'));
       request.onblocked=()=>reject(new Error('Write journal blocked by another browser window.'));
     });
+  },
+  /* Another tab's save reaches this tab's copy of localStorage a moment after it commits.
+     Before saving, wait (briefly) until this tab sees the last committed write, so the
+     change is applied on top of it instead of being refused as stale. */
+  async settle(key, timeout=3000) {
+    if(!globalThis.indexedDB || !globalThis.crypto?.subtle)return false;
+    const db=await this.open();
+    let head;
+    try { head=await new Promise((resolve,reject)=>{const r=db.transaction('heads').objectStore('heads').get(key);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);}); }
+    finally { db.close(); }
+    if(head===undefined)return true;
+    const end=Date.now()+timeout;
+    for(;;) {
+      if(await this.fingerprint(localStorage.getItem(key))===head)return true;
+      if(Date.now()>end)return false;   // the commit below still refuses rather than overwrite
+      await new Promise(r=>setTimeout(r,25));
+    }
+  },
+  async commit(key, previous, next, write, rollback) {
+    if(!globalThis.indexedDB || !globalThis.crypto?.subtle)throw new Error('Safe writes require IndexedDB and Web Crypto. Export your data and use a supported browser.');
+    const [expected,hash]=await Promise.all([this.fingerprint(previous),this.fingerprint(next)]);
+    const db=await this.open();
     let written=false;
     try {
       await new Promise((resolve,reject)=>{

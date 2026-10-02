@@ -1604,6 +1604,13 @@ table.case-table .c-act { width: 52px; text-align: center; }
 .sig.warn { color: var(--orange); border-color: currentColor; }
 .form-note { font-size: 12px; padding: 8px 10px; border-radius: 4px; border: 1px solid var(--line); color: var(--ink-dim); }
 .form-note.warn { color: var(--orange); border-color: currentColor; background: rgba(255,139,62,.06); }
+/* Field conflicts with another tab, shown at the top of an open form. */
+.merge-box { border: 1px solid var(--orange); background: rgba(255,139,62,.06); border-radius: 4px; padding: 10px 12px; margin-bottom: 14px; font-size: 12.5px; }
+.merge-box > b { color: var(--orange); }
+.merge-box > p { margin: 4px 0 8px; color: var(--ink-dim); }
+.merge-row { border-top: 1px solid var(--line-soft); padding: 7px 0 2px; }
+.merge-field { margin-bottom: 3px; }
+.merge-row label { display: flex; gap: 6px; align-items: baseline; padding: 2px 0; cursor: pointer; overflow-wrap: anywhere; }
 
 /* Group header rows inside data tables (run log grouped by session or build). */
 table.data tr.group-row td { background: var(--bg-2); font-family: var(--disp); font-size: 13.5px; letter-spacing: .8px; text-transform: uppercase; color: var(--ink-dim); padding: 8px 12px 6px; }

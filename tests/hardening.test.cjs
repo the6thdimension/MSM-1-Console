@@ -84,11 +84,85 @@ test('read-back failure restores original active bytes',async()=>{
   await assert.rejects(h.Store.command('edit',()=>h.Store.update('systems','sys-1',{name:'new'})),/verified/);
   assert.equal(h.memory.get(KEY),raw);assert.equal(h.memory.get(KEY+'-recovery'),raw);
 });
-test('stale tab refuses to overwrite newer data',async()=>{
-  const mem=new Map([[KEY,JSON.stringify(fixture())]]),a=harness(mem),b=harness(mem);a.load();b.load();
-  await a.Store.command('A',()=>a.Store.update('systems','sys-1',{name:'A'}));
-  await assert.rejects(b.Store.command('B',()=>b.Store.update('systems','sys-1',{name:'B'})),/Another tab/);
-  assert.equal(JSON.parse(mem.get(KEY)).systems[0].name,'A');assert.match(b.Store.failedDraft,/"name":"B"/);
+/* Two tabs over one storage: each harness is a tab. */
+function twoTabs(){const mem=new Map([[KEY,JSON.stringify(fixture())]]),a=harness(mem),b=harness(mem);a.load();b.load();return {mem,a:a.Store,b:b.Store,saved:()=>JSON.parse(mem.get(KEY))};}
+test('a tab behind another catches up inside the lock and its save lands on top, losing nothing',async()=>{
+  const {a,b,saved}=twoTabs();
+  let req;await a.command('A',()=>{a.update('systems','sys-1',{name:'A'});req=a.add('requirements',{title:'From tab A',text:'',type:'Functional',priority:'Low',method:'Test',measure:'',threshold:'',objective:'',componentIds:[]});});
+  const held=b.get('systems','sys-2');   // an object an open form in tab B holds
+  await b.command('B',()=>{b.update('systems','sys-2',{name:'B'});held.description='edited through a held object';});
+  const db=saved();
+  assert.equal(db.systems.find(s=>s.id==='sys-1').name,'A');assert.equal(db.systems.find(s=>s.id==='sys-2').name,'B');
+  assert.equal(db.systems.find(s=>s.id==='sys-2').description,'edited through a held object','catching up keeps held objects live');
+  assert.ok(db.requirements.some(r=>r.id===req.id));
+  // tab A catches up the same way on its next save, and codes never collide
+  let r2;await a.command('A2',()=>{r2=a.add('requirements',{title:'A again',text:'',type:'Functional',priority:'Low',method:'Test',measure:'',threshold:'',objective:'',componentIds:[]});});
+  assert.equal(saved().systems.find(s=>s.id==='sys-2').name,'B');
+  assert.equal(new Set(saved().requirements.map(r=>r.code)).size,saved().requirements.length);
+});
+test('a form saved after another tab saved merges field by field and asks only about real conflicts',async()=>{
+  const {a,b,saved}=twoTabs();
+  const base=b._committed;   // tab B opens an edit form for SYS-01
+  const sys=copy(b.get('systems','sys-1'));
+  await a.command('A',()=>a.update('systems','sys-1',{description:'Tab A description'}));
+  // B changed only the name; the form re-submits the old description it was opened with.
+  await b.command('Edit',()=>b.update('systems','sys-1',{name:'Tab B name',description:sys.description}),{base,subject:{coll:'systems',id:'sys-1'}});
+  let s=saved().systems.find(x=>x.id==='sys-1');
+  assert.equal(s.name,'Tab B name');assert.equal(s.description,'Tab A description','a field this tab did not change keeps the other tab\'s value');
+  // both change the same field: refused with the conflict, nothing written
+  const base2=b._committed;
+  await a.command('A',()=>a.update('systems','sys-1',{name:'A wins?'}));
+  const err=await b.command('Edit',()=>b.update('systems','sys-1',{name:'B wins?'}),{base:base2}).catch(e=>e);
+  assert.equal(err.conflicts.length,1);assert.equal(err.conflicts[0].field,'name');assert.equal(err.conflicts[0].theirs,'A wins?');assert.equal(err.conflicts[0].mine,'B wins?');
+  assert.equal(saved().systems.find(x=>x.id==='sys-1').name,'A wins?');
+  // the person picks; a pick applies only while the other value is still the one shown
+  await b.command('Edit',()=>b.update('systems','sys-1',{name:'B wins?'}),{base:base2,resolutions:{[err.conflicts[0].key]:{choice:'mine',theirs:'A wins?'}}});
+  assert.equal(saved().systems.find(x=>x.id==='sys-1').name,'B wins?');
+  const base3=b._committed;await a.command('A',()=>a.update('systems','sys-1',{name:'A again'}));
+  await b.command('Edit',()=>b.update('systems','sys-1',{name:'B again'}),{base:base3,resolutions:{'systems/sys-1/name':{choice:'theirs',theirs:'A again'}}});
+  assert.equal(saved().systems.find(x=>x.id==='sys-1').name,'A again');
+});
+test('reference lists and nested items from two tabs combine instead of overwriting',async()=>{
+  const {a,b,saved}=twoTabs();
+  const plan=saved().plans[0],spare=saved().cases.map(c=>c.id).filter(id=>!plan.caseIds.includes(id));
+  const base=b._committed;
+  await a.command('A',()=>a.update('plans',plan.id,{caseIds:[...plan.caseIds,spare[0]]}));
+  await b.command('B',()=>b.update('plans',plan.id,{caseIds:[...plan.caseIds.slice(1),spare[1]]}),{base});
+  const ids=saved().plans.find(p=>p.id===plan.id).caseIds;
+  assert.ok(ids.includes(spare[0])&&ids.includes(spare[1]),'both additions kept');assert.ok(!ids.includes(plan.caseIds[0]),'tab B\'s removal kept');
+  const risk=saved().risks.find(r=>(r.mitigations||[]).length>=2),m0=risk.mitigations[0];
+  const base2=b._committed;
+  await a.command('A',()=>{const r=a.get('risks',risk.id);r.mitigations.push({id:'mit-synthetic',text:'From tab A',owner:'',due:'',status:'Proposed'});});
+  await b.command('B',()=>{const m=b.get('risks',risk.id).mitigations.find(x=>x.id===m0.id);Object.assign(m,{...copy(m0),status:'Complete'});},{base:base2});
+  const r=saved().risks.find(x=>x.id===risk.id);
+  assert.ok(r.mitigations.some(x=>x.id==='mit-synthetic'));assert.equal(r.mitigations.find(x=>x.id===m0.id).status,'Complete');
+});
+test('undo reverses only this tab\'s change and refuses when another tab changed the same thing',async()=>{
+  const {a,b,saved}=twoTabs();
+  const def=saved().defects[0];
+  await b.command('Delete',()=>b.remove('defects',def.id));
+  await a.command('A',()=>a.update('systems','sys-1',{name:'Kept through undo'}));
+  assert.equal(await b.command('Undo',()=>b.undo()),true);
+  assert.ok(saved().defects.some(d=>d.id===def.id),'deleted record restored');assert.equal(saved().systems[0].name,'Kept through undo','other tab\'s change kept');
+  const proc=saved().procedures.find(p=>(p.steps||[]).length>1);
+  await b.command('Remove step',()=>{b.checkpoint();b.get('procedures',proc.id).steps.splice(0,1);});
+  await a.command('A',()=>{a.get('procedures',proc.id).steps.push('Added in tab A');});
+  await assert.rejects(b.command('Undo',()=>b.undo()),new RegExp(`Cannot undo: ${proc.code}`));
+  assert.ok(saved().procedures.find(p=>p.id===proc.id).steps.includes('Added in tab A'),'a refused undo changes nothing');
+});
+test('a form for a record another tab deleted is refused with a clear reason',async()=>{
+  const {a,b,saved}=twoTabs();
+  const base=b._committed,doc=saved().documents[0];
+  await a.command('Delete',()=>a.remove('documents',doc.id));
+  await assert.rejects(b.command('Edit',()=>b.update('documents',doc.id,{title:'x'}),{base,subject:{coll:'documents',id:doc.id}}),new RegExp(`${doc.code} was deleted in another tab`));
+  assert.ok(!saved().documents.some(d=>d.id===doc.id));
+});
+test('three-way merge rules',()=>{
+  const h=harness(),M=vm.runInContext('Merge',h.ctx);
+  assert.ok(M.equal({a:1,b:[1,{c:2}]},{b:[1,{c:2}],a:1}));assert.ok(M.equal({a:undefined},{}));
+  const base={meta:{seq:{cases:3}},cases:[{id:'t1',title:'x',n:1}],audit:[1]},theirs={meta:{seq:{cases:5}},cases:[{id:'t1',title:'x',n:2}],audit:[1,2]},mine={meta:{seq:{cases:4}},cases:[{id:'t1',title:'y',n:1},{id:'t9',title:'new'}],audit:[1]};
+  const r=M.db(base,theirs,mine);
+  assert.equal(r.conflicts.length,0);assert.equal(r.db.meta.seq.cases,5);assert.deepEqual(copy(r.db.cases),[{id:'t1',title:'y',n:2},{id:'t9',title:'new'}]);assert.deepEqual(copy(r.db.audit),[1,2]);
 });
 test('writes require browser locking capability',async()=>{const h=await ready();delete h.ctx.navigator.locks;await assert.rejects(h.Store.command('edit',()=>{}),/Web Locks/);});
 test('run and case status are committed in a single active-key write',async()=>{

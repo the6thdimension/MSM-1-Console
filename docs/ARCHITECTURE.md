@@ -52,11 +52,20 @@ flowchart TD
   Commands -->|Validated and audited command| Store
   Store --> Fence[fence.js: shared fingerprint journal]
   Fence <--> Journal[(IndexedDB fingerprint)]
+  Store -->|form saved after another tab saved| Merge[merge.js: three-way merge]
+  Storage -->|storage event: another tab saved| Boot
   Actions --> IO[io.js: CSV conversion and downloads]
   IO --> Store
   Store <--> Storage
   Router -->|FileReader import candidate| Commands
 ```
+
+Several tabs share the one localStorage database. A save in any tab fires a
+`storage` event in the others, which catch up in place (`Store.syncFromStorage`) and
+redraw. Each save waits inside the Web Lock until the tab sees the last committed
+write (`WriteFence.settle`), catches up, then applies its change; a form that opened
+before another tab's save is merged three ways (`Merge.db`), and a field both tabs
+changed is returned to the form as a conflict to decide.
 
 All scripts share global bindings. This is a conceptual responsibility diagram;
 `Load` and `Store` are methods of the same Store object. Actions also use shared UI

@@ -1,8 +1,13 @@
 /* UI boundary: defer success/navigation until the entire command commits. */
 const Commands = {
-  async run(label, fn) {
-    try { await Store.command(label, fn); return true; }
-    catch (err) { this.error(err); return false; }
+  /* opts are Store.command options; opts.onConflict receives field conflicts with
+     another tab so the open form can ask which value to keep. */
+  async run(label, fn, opts = {}) {
+    try { await Store.command(label, fn, opts); return true; }
+    catch (err) {
+      if (err.conflicts && opts.onConflict) { opts.onConflict(err.conflicts); return false; }
+      this.error(err); return false;
+    }
   },
   error(err) {
     Toast.show(`Not saved: ${err.message}`, true, Store.failedDraft ? {

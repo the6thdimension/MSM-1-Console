@@ -12,7 +12,7 @@ processing is local. No private user database was used for development or tests.
 | Saving | Commands group all their changes into one active-database write. Validate, save a recovery copy, verify it, write the candidate, verify it, and only then show success/navigation. Failures restore memory and retain an exportable draft. |
 | Imports | JSON and CSV operate on candidates. Preview replacement counts/normalization or CSV added/updated counts before activation. Failed validation or persistence cannot partially apply the import. |
 | Integrity | Validate identities, reference targets, core types/workflow states, dates and embedded content. Reconcile counters without renumbering records. Preview cascade impact; clean references to cascaded run deletions. |
-| Competing tabs | Web Locks serialize commands. An IndexedDB fingerprint journal rejects stale writers even when localStorage caches have not yet propagated updates. A localStorage comparison provides an additional check. |
+| Competing tabs | Web Locks serialize commands. Inside the lock a tab waits until it sees the last committed write (IndexedDB fingerprint), catches up in place and applies its change on top, so simultaneous saves from several tabs all land. Forms opened before another tab's save merge three ways; a field both tabs changed is returned to the form to decide, never overwritten silently. If the latest write never arrives, the fingerprint journal still rejects the stale writer, and a localStorage comparison provides an additional check. |
 | Status | Run creation, editing, reassignment and deletion recompute affected case lifecycle state from its latest run. Date, recorded timestamp and numeric-aware ID establish deterministic ordering. |
 | Content | Safe external-link rendering, HTTP(S) validation for new issue links, HTML escaping, inert binary downloads, structural attachment checks, and spreadsheet formula protection on CSV export. |
 | Offline | Removed remote fonts. A Content Security Policy disallows background network connections, remote scripts, embedded objects and form submission. Explicit external links still work when the user opens them. |
@@ -157,7 +157,7 @@ networking disabled and close it afterward.
 The release command runs the core suite followed by the browser suite and exits
 unsuccessfully on failure. Browser checks cover launch, persisted CRUD, escaping,
 quota failure/retry, run capture, CSV/JSON previews, downloaded JSON, cascade undo,
-competing tabs, simultaneous-write races, routes, and corrupt-startup recovery.
+live multi-tab refresh, saves from a tab that has not caught up, simultaneous saves from two tabs, form merge and the conflict prompt, routes, and corrupt-startup recovery.
 
 Remaining limits: full-database serialization still has size/performance limits;
 recovery copies and unpruned history increase quota use; browser storage can be

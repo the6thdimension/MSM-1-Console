@@ -166,7 +166,7 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
     assert.equal(await page.locator('#modal-form select[name="buildId"]').inputValue(),newBuild.id,'run form defaults to the build under test');
     await page.locator('#modal-form [type="submit"]').click();
     await page.waitForFunction(id=>Store.latestRun('tc-7')?.buildId===id,newBuild.id);
-    assert.match(await page.locator('#view').textContent(),/9\.9\.9-synthetic/);
+    await page.locator('#view',{hasText:'9.9.9-synthetic'}).waitFor();
     await go('#/builds/'+newBuild.id);
     assert.match(await page.locator('#view').textContent(),/Results On This Build[^]*TC-007/i);
     console.log('PASS releases and builds: add build, run defaults to it, build page shows the result');
@@ -229,20 +229,44 @@ const entry=pathToFileURL(path.join(root,'index.html')).href;
     console.log('PASS cascade preview, cleanup and undo');
 
     const tab=await context.newPage();await tab.goto(entry);await tab.waitForFunction(()=>!!Store.db);
-    await page.evaluate(()=>Store.command('first tab',()=>Store.update('systems','sys-1',{name:'First tab wins'})));
-    const stale=await tab.evaluate(async()=>{try{await Store.command('stale tab',()=>Store.update('systems','sys-1',{name:'Stale write'}));return '';}catch(e){return e.message;}});
-    assert.match(stale,/Another tab/);assert.equal(await page.evaluate(()=>Store.get('systems','sys-1').name),'First tab wins');
+    const goIn=async(p,hash)=>{await p.evaluate(h=>App.go(h),hash);await p.waitForFunction(h=>App._lastHash===h,hash);};
+    const savedSys=id=>page.evaluate(id=>JSON.parse(localStorage.getItem(DB_KEY)).systems.find(s=>s.id===id),id);
+    // Another tab's save reaches this tab's storage a moment after it commits: wait for it.
+    const expectSaved=(id,key,value)=>page.waitForFunction(([id,key,value])=>JSON.parse(localStorage.getItem(DB_KEY)).systems.find(s=>s.id===id)[key]===value,[id,key,value],{timeout:5000});
+    // a save in one tab shows up in the other without a reload
+    await goIn(tab,'#/systems/sys-1');
+    await page.evaluate(()=>Store.command('first tab',()=>Store.update('systems','sys-1',{name:'Saved in the first tab'})));
+    await tab.waitForFunction(()=>document.getElementById('view').textContent.includes('Saved in the first tab'));
+    // a tab that has not caught up yet still saves on top, losing nothing
+    await tab.evaluate(()=>{Store._raw='stale';});   // pretend the change notice has not arrived
+    await tab.evaluate(()=>Store.command('second tab',()=>Store.update('systems','sys-2',{name:'Saved in the second tab'})));
+    await expectSaved('sys-1','name','Saved in the first tab');await expectSaved('sys-2','name','Saved in the second tab');
     for(let i=0;i<5;i++) {
-      await Promise.all([page.reload(),tab.reload()]);
-      await Promise.all([page.waitForFunction(()=>!!Store.db&&!Store._tx),tab.waitForFunction(()=>!!Store.db&&!Store._tx)]);
-      const writes=await Promise.all([page,tab].map((p,n)=>p.evaluate(async name=>{
-        try {await Store.command('race',()=>Store.update('systems','sys-1',{name}));return 'saved';}catch(e){return e.message;}
-      },`Race ${i} writer ${n}`)));
-      assert.equal(writes.filter(x=>x==='saved').length,1);
-      assert.ok(writes.some(x=>/Another tab/.test(x)));
+      const writes=await Promise.all([page,tab].map((p,n)=>p.evaluate(async ([id,name])=>{
+        try {await Store.command('race',()=>Store.update('systems',id,{description:name}));return 'saved';}catch(e){return e.message;}
+      },[n?'sys-2':'sys-1',`Race ${i} writer ${n}`])));
+      assert.deepEqual(writes,['saved','saved'],'simultaneous saves from two tabs both land');
+      await expectSaved('sys-1','description',`Race ${i} writer 0`);await expectSaved('sys-2','description',`Race ${i} writer 1`);
     }
+    // an open form merges: untouched fields keep the other tab's save; a real conflict asks
+    await goIn(tab,'#/systems/sys-1');await tab.locator('[data-act="edit-system"]').first().click();
+    await page.evaluate(()=>Store.command('first tab',()=>Store.update('systems','sys-1',{description:'Description from the first tab'})));
+    await tab.locator('#modal-form input[name="name"]').fill('Name from the second tab');
+    await tab.locator('#modal-form [type="submit"]').click();await tab.waitForFunction(()=>!document.querySelector('#modal-form'));
+    await expectSaved('sys-1','name','Name from the second tab');await expectSaved('sys-1','description','Description from the first tab');
+    await tab.locator('[data-act="edit-system"]').first().click();
+    await page.evaluate(()=>Store.command('first tab',()=>Store.update('systems','sys-1',{name:'First tab name'})));
+    await tab.locator('#modal-form input[name="name"]').fill('Second tab name');
+    await tab.locator('#modal-form [type="submit"]').click();
+    await tab.locator('.merge-box').waitFor();
+    assert.match(await tab.locator('.merge-box').textContent(),/Use theirs: First tab name/);
+    assert.equal((await savedSys('sys-1')).name,'First tab name','nothing saved until the person decides');
+    await tab.locator('.merge-box input[value="theirs"]').check();
+    assert.equal(await tab.locator('#modal-form input[name="name"]').inputValue(),'First tab name','choosing theirs puts their value in the form');
+    await tab.locator('#modal-form [type="submit"]').click();await tab.waitForFunction(()=>!document.querySelector('#modal-form'));
+    await expectSaved('sys-1','name','First tab name');
     await tab.close();await page.reload();await page.waitForFunction(()=>!!Store.db&&!Store._tx);
-    console.log('PASS real browser competing tabs and five simultaneous-write races');
+    console.log('PASS live multi-tab: instant refresh, saves on top, simultaneous saves, form merge and conflict prompt');
 
     for(const route of ['dashboard','schedule','systems','requirements','cases','trace','idsk','procedures','plans','runs','defects','risks','resources','documents','interchange','sitrep','decisions/dec-1/report','testruns/tr-1','components/cmp-14','ownership','releases','releases/rel-1','builds/bld-9','runs/run-7','runs?group=build','documents/doc-4']) {
       await go('#/'+route);

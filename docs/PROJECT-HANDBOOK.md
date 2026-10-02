@@ -72,7 +72,8 @@ a test run brings its row back into view. Navigating to a new page starts at the
 | `styles.css` | Dark console appearance, tables, badges, charts, Gantt, responsive and print styles |
 | `js/seed.js` | `SEED_DB`: illustrative program used when no saved database is loaded or on reset |
 | `js/guard.js` | Candidate normalization and validation, preserving unknown fields |
-| `js/fence.js` | Shared IndexedDB fingerprint journal for stale-writer rejection |
+| `js/merge.js` | `Merge`: three-way merge of work done in several tabs (field by field, records and nested items by id, `*Ids` lists as sets, code counters take the higher value) |
+| `js/fence.js` | Shared IndexedDB fingerprint journal: waits for another tab's save to arrive before a save, and rejects a stale writer if it never does |
 | `js/commands.js` | UI command boundary, previews, deferred effects and error handling |
 | `js/store.js` | `Store`: persistence, migrations, IDs, CRUD, relationships, derived status, search, audit, undo, snapshots |
 | `js/io.js` | `IO`: CSV parser/writer, Jira and Zephyr conversions, browser file downloads |
@@ -332,6 +333,31 @@ Deletion, blank creation, reset and import checkpoint in-memory state. Supported
 Undo actions last ten seconds; at most five checkpoints remain, and they do not
 survive reload. Cascades clean references from defects to removed runs. Undo
 maintains audit history. The recovery key rotates on subsequent saves.
+
+**Several tabs at once.** Any number of tabs can edit the same program.
+- When a tab saves, every other tab catches up immediately (the `storage` event)
+  and redraws the page it shows, keeping scroll position. A redraw waits while you
+  are typing in a page field, until focus leaves it. Open forms stay open.
+- Every save runs inside the shared Web Lock. Inside it, a tab first waits (up to
+  3 s) until its copy of storage shows the last committed save (Chrome passes
+  another tab's write along a moment after it commits), then catches up in place,
+  then applies its change. Changes therefore land on top of the latest program;
+  objects an open form holds stay live because records are updated in place by id.
+- A form remembers the program as it was when it opened. If another tab saved
+  meanwhile, the form's save is a three-way merge (`js/merge.js`): a field only this
+  form changed takes the form's value; a field only the other tab changed keeps the
+  other tab's value even though the form re-submits the old one; reference lists
+  ending in `Ids` combine both tabs' additions and removals; records and nested items
+  (mitigations, notes) merge by id. A field both changed to different values stops
+  the save and the form lists each such field with **Keep mine** / **Use theirs**
+  (picking theirs also puts it back in the form); nothing is written until the
+  person saves again. A choice applies only while the other value is still the one
+  shown. A form for a record another tab deleted is refused with that reason.
+- Undo reverses only this tab's own change, merged over anything other tabs saved
+  since. If another tab changed the same thing afterwards, undo is refused and names
+  the record; nothing changes.
+- If the fingerprint journal never sees the latest save arrive, the save is still
+  refused rather than overwriting (the pre-existing safety net).
 
 ## 7. Remaining engineering limits
 

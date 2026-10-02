@@ -236,6 +236,11 @@ const Modal = {
     root.querySelectorAll("[data-close]").forEach(b => b.addEventListener("click", Modal.close));
 
     const form = root.querySelector("#modal-form");
+    // What the form started from, so a save after another tab's save is merged, not overwritten.
+    const base = Store._committed;
+    const subjectColl = typeof values.id === "string" ? DataGuard.collections.find(c => Store.all(c).some(x => x.id === values.id)) : null;
+    const subject = subjectColl ? { coll: subjectColl, id: values.id } : null;
+    const resolutions = {};
     form.addEventListener("submit", async e => {
       e.preventDefault();
       const out = {};
@@ -253,15 +258,46 @@ const Modal = {
       const submit = form.querySelector('[type="submit"]');
       if (submit.disabled) return;
       submit.disabled = true;
+      for (const input of form.querySelectorAll(".merge-box input:checked")) {
+        const c = input._conflict; resolutions[c.key] = { choice: input.value, theirs: c.theirs };
+      }
       const ok = await Commands.run(title, () => {
         onSubmit(out);
         Store.effect(() => { if (root.querySelector('#modal-form') === form) Modal.close(); });
-      });
+      }, { base, subject, resolutions, onConflict: conflicts => Modal.showConflicts(form, fields, conflicts) });
       if (!ok) submit.disabled = false;
     });
 
     const first = form.querySelector("input, textarea, select");
     if (first) first.focus();
+  },
+
+  /* Another tab changed fields this form also changed: show both values and let the
+     person pick per field. Picking "theirs" also puts that value back into the form. */
+  showConflicts(form, fields, conflicts) {
+    const show = v => v === undefined ? "(not set)" : Array.isArray(v) ? (v.length ? v.join(", ") : "(none)") : typeof v === "object" && v ? JSON.stringify(v) : String(v === "" ? "(blank)" : v);
+    const clip = s => s.length > 90 ? s.slice(0, 88) + "…" : s;
+    const labelOf = c => { const top = c.field.split(".")[0]; const f = fields.find(x => x.key === top); return f ? f.label : (c.field || "record"); };
+    form.querySelector(".merge-box")?.remove();
+    const box = document.createElement("div");
+    box.className = "merge-box";
+    box.innerHTML = `<b>Changed in another tab while you were editing</b>
+      <p>Choose which value to keep for each field below, then save again. Every other change from both tabs is kept.</p>
+      ${conflicts.map((c, i) => `<div class="merge-row"><div class="merge-field"><span class="code">${esc(c.code)}</span> ${esc(labelOf(c))}${c.kind === "deleted" ? " — deleted in the other tab" : ""}</div>
+        <label><input type="radio" name="merge-${i}" value="mine" checked> Keep mine: <span class="mono">${esc(clip(show(c.mine)))}</span></label>
+        <label><input type="radio" name="merge-${i}" value="theirs"> ${c.kind === "deleted" ? "Leave it deleted" : `Use theirs: <span class="mono">${esc(clip(show(c.theirs)))}</span>`}</label></div>`).join("")}`;
+    form.querySelector(".modal-body").prepend(box);
+    box.querySelectorAll(".merge-row").forEach((row, i) => {
+      const c = conflicts[i];
+      row.querySelectorAll("input").forEach(input => {
+        input._conflict = c;
+        input.addEventListener("change", () => {
+          const el = c.field && !c.field.includes(".") ? form.elements[c.field] : null;
+          if (el && !(el instanceof RadioNodeList) && typeof (input.value === "theirs" ? c.theirs : c.mine) !== "object") el.value = String((input.value === "theirs" ? c.theirs : c.mine) ?? "");
+        });
+      });
+    });
+    box.scrollIntoView({ block: "nearest" });
   },
 
   confirm(message, onYes, label = "Delete", safe = false) {

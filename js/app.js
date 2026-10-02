@@ -299,11 +299,30 @@ const App = {
     this.bind();
     if (!location.hash) location.hash = "#/dashboard";
     this.render();
-    window.addEventListener('storage', e => {
-      if(e.key===DB_KEY || e.key===null) Toast.show('Database changed in another tab. Export any unsaved draft and reload before saving.',true);
-    });
+    window.addEventListener('storage', e => { if (e.key === DB_KEY || e.key === null) this.externalChange(); });
     Commands.run('Daily snapshot',()=>Store.snapshotToday());
   },
+  /* Another tab saved: catch up and redraw. Open forms stay open (their save is merged);
+     typing in a page field is never interrupted — the redraw waits until focus leaves it. */
+  _syncNote: 0,
+  externalChange() {
+    if (Store._tx) return;   // a save in this tab is in progress; it catches up inside the lock
+    if (localStorage.getItem(DB_KEY) === null && Store._raw !== null) {
+      Toast.show('The database was removed in another tab. Export from this tab to keep what it shows.', true);
+      return;
+    }
+    let changed;
+    try { changed = Store.syncFromStorage(); }
+    catch (err) { Toast.show(`Another tab saved data this tab cannot read (${err.message}). Reload this tab.`, true); return; }
+    if (!changed) return;
+    this.refreshNavCounts();
+    const active = document.activeElement;
+    if (active && active.closest && active.closest('#view') && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName)) {
+      if (!this._renderOnBlur) { this._renderOnBlur = true; active.addEventListener('blur', () => { this._renderOnBlur = false; this.render(); }, { once: true }); }
+    } else this.render();
+    if (Date.now() - this._syncNote > 4000) { this._syncNote = Date.now(); Toast.show('Updated with changes from another tab'); }
+  },
+
   recovery(err) {
     document.getElementById('sidebar').style.display='none';
     const view=document.getElementById('view');

@@ -38,13 +38,40 @@ const Store = {
       return {db:this.db,result};
     } finally {this.db=db;this._tx=tx;this.undoStack=undo;}
   },
-  async command(label, fn) {
+  /* opts.base: the program (JSON) when a form opened. When another tab saved since,
+     this tab's change is merged field by field instead of overwriting theirs.
+     opts.subject: {coll, id} the form edits; opts.resolutions: conflict choices. */
+  async command(label, fn, opts = {}) {
     if (!globalThis.navigator?.locks) throw new Error('This browser cannot coordinate safe writes. Use a current browser with Web Locks; export remains available.');
-    return navigator.locks.request(DB_KEY, () => this.transaction(label, fn));
+    return navigator.locks.request(DB_KEY, async () => {
+      // Inside the lock no other tab can write, so catching up here means every change
+      // lands on top of the latest saved program rather than being refused as stale.
+      if (!this._tx) {
+        if (WriteFence.settle) await WriteFence.settle(DB_KEY);
+        this.syncFromStorage();
+      }
+      return this.transaction(label, fn, opts);
+    });
   },
-  async transaction(label, fn) {
+  /* Bring this tab up to date with what another tab saved. The update is applied in
+     place (records matched by id) so objects held by an open form stay live.
+     Returns true when anything changed. */
+  syncFromStorage() {
+    const raw = localStorage.getItem(DB_KEY);
+    if (raw === this._raw || raw === null) return false;
+    const next = DataGuard.normalize(JSON.parse(raw)).db;
+    DataGuard.restore(this.db, next);
+    this._raw = raw;
+    this._committed = JSON.stringify(this.db);
+    return true;
+  },
+  async transaction(label, fn, opts = {}) {
     if (this._tx) return fn();
     const before = this._committed || JSON.stringify(this.db);
+    if (opts.subject && opts.base && !this.get(opts.subject.coll, opts.subject.id)) {
+      const was = (JSON.parse(opts.base)[opts.subject.coll] || []).find(x => x.id === opts.subject.id);
+      if (was) throw new Error(`${was.code || was.name || 'This record'} was deleted in another tab, so this form cannot be saved. Copy anything you need from it, then close it.`);
+    }
     const undo = this.undoStack.slice();
     const original=this.db;
     const tx = this._tx = {label, effects: [], replacement: false};
@@ -52,6 +79,7 @@ const Store = {
     try {
       result = fn();
       if (result && typeof result.then === 'function') throw new Error('Commands must be synchronous inside the storage lock.');
+      if (opts.base && opts.base !== before) this.mergeOver(JSON.parse(opts.base), JSON.parse(before), opts.resolutions);
       // Re-importing the same payload is a no-op, including its prior receipt.
       if (tx.replacement) {
         const prior=JSON.parse(before), last=prior.audit?.at(-1);
@@ -67,6 +95,8 @@ const Store = {
         else this.db.audit.push({ts:new Date().toISOString(),coll:'database',entityId:'database',code:'',action:'replaced',summary:label+'; previous active bytes retained in recovery storage'});
         await this.persist();
       }
+      // An undo point taken during this command records the state it produced.
+      for (const entry of this.undoStack) if (entry.after === null) entry.after = this._committed;
     } catch (err) {
       try {this.failedDraft = JSON.stringify(this.db);}catch(_){this.failedDraft=null;}
       this.db = DataGuard.restore(original,JSON.parse(before));
@@ -85,6 +115,13 @@ const Store = {
     return result;
   },
   effect(fn) { if (this._tx) this._tx.effects.push(fn); else fn(); },
+  /* Replace this tab's result (this.db, built on `theirs`) with the three-way merge of
+     base → theirs and base → this tab. Throws with `conflicts` when both changed a field. */
+  mergeOver(base, theirs, resolutions) {
+    const { db, conflicts } = Merge.db(base, theirs, DataGuard.clone(this.db), resolutions || {});
+    if (conflicts.length) throw Object.assign(new Error(`${conflicts.length} field${conflicts.length === 1 ? ' was' : 's were'} changed in another tab while you were editing.`), { conflicts });
+    DataGuard.restore(this.db, DataGuard.clone(db));
+  },
   load() {
     const active = localStorage.getItem(DB_KEY);
     let raw = active;
@@ -183,18 +220,23 @@ const Store = {
   /* ---------- undo (soft delete) ---------- */
   undoStack: [],
 
+  /* An undo point keeps the program before and after this tab's change. Undo reverses
+     only that change, merged over whatever other tabs saved since. */
   checkpoint() {
-    this.undoStack.push(JSON.stringify(this.db));
+    this.undoStack.push({ before: JSON.stringify(this.db), after: null });
     if (this.undoStack.length > 5) this.undoStack.shift();
   },
 
   undo() {
     if (!this._tx) throw new Error('Use Store.command() for undo.');
-    const snap = this.undoStack.pop();
-    if (!snap) return false;
-    const audit=this.db.audit;
-    this.db = JSON.parse(snap);
-    this.db.audit=audit;
+    const entry = this.undoStack.pop();
+    if (!entry || entry.after === null) return false;
+    const { db, conflicts } = Merge.db(JSON.parse(entry.after), DataGuard.clone(this.db), JSON.parse(entry.before));
+    if (conflicts.length) {
+      const codes = [...new Set(conflicts.map(c => c.code))].join(', ');
+      throw new Error(`Cannot undo: ${codes} changed in another tab after your change. Edit ${conflicts.length === 1 ? 'it' : 'them'} directly instead.`);
+    }
+    DataGuard.restore(this.db, DataGuard.clone(db));
     this.save();
     return true;
   },
